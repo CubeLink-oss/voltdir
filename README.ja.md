@@ -1,4 +1,4 @@
-# voltdir
+<p align="center"><img src="assets/ja/banner.svg" alt="voltdir: ディスクの中身を、1 回の呼び出しで。" width="100%"></p>
 
 **表示言語：** [English](README.md) · [正體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · 日本語 · [Tiếng Việt](README.vi.md)
 

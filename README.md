@@ -1,4 +1,4 @@
-# voltdir
+<p align="center"><img src="assets/en/banner.svg" alt="voltdir: Your disk, explained in one call." width="100%"></p>
 
 **Read in:** English · [正體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md)
 

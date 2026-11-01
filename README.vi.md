@@ -1,4 +1,4 @@
-# voltdir
+<p align="center"><img src="assets/vi/banner.svg" alt="voltdir: Hiểu cả ổ đĩa chỉ với một lệnh gọi." width="100%"></p>
 
 **Đọc bằng:** [English](README.md) · [正體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · Tiếng Việt
 

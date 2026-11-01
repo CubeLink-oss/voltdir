@@ -1,4 +1,4 @@
-# voltdir
+<p align="center"><img src="assets/zh-CN/banner.svg" alt="voltdir: 一次调用，看清整块硬盘。" width="100%"></p>
 
 **阅读语言：** [English](README.md) · [正體中文](README.zh-TW.md) · 简体中文 · [한국어](README.ko.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md)
 

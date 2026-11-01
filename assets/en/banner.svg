@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 460" width="1600" height="460" role="img" aria-label="voltdir: Your disk, explained in one call.">
+  <title>voltdir: Your disk, explained in one call.</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1117"/><stop offset="1" stop-color="#161210"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc53d"/><stop offset="1" stop-color="#ff8a1f"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff8a1f" stop-opacity="0.18"/><stop offset="1" stop-color="#ff8a1f" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="card"><rect width="1600" height="460" rx="24"/></clipPath>
+    <!-- 樹狀圖由左往右漸顯，壓在文字後面也不會搶字 -->
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.55" stop-color="#fff" stop-opacity="1"/>
+    </linearGradient>
+    <mask id="tmmask"><rect x="1000" y="0" width="600" height="460" fill="url(#fade)"/></mask>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g clip-path="url(#card)">
+  <rect width="1600" height="460" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1600" height="6" fill="url(#accent)"/>
+  <ellipse cx="250" cy="225" rx="260" ry="200" fill="url(#halo)"/>
+  <g mask="url(#tmmask)">
+    <rect x="1213.0" y="43" width="199.0" height="224" rx="8" fill="#ffc53d" fill-opacity="0.2" stroke="#ffc53d" stroke-opacity="0.28"/>
+    <rect x="1418.0" y="43" width="141.6" height="134" rx="8" fill="#ffc53d" fill-opacity="0.13" stroke="#ffc53d" stroke-opacity="0.21"/>
+    <rect x="1418.0" y="183" width="84.19999999999999" height="84" rx="8" fill="#ffc53d" fill-opacity="0.09" stroke="#ffc53d" stroke-opacity="0.17"/>
+    <rect x="1508.2" y="183" width="51.4" height="84" rx="8" fill="#ffc53d" fill-opacity="0.06" stroke="#ffc53d" stroke-opacity="0.14"/>
+    <rect x="1213.0" y="273" width="116.99999999999999" height="144" rx="8" fill="#ffc53d" fill-opacity="0.11" stroke="#ffc53d" stroke-opacity="0.19"/>
+    <rect x="1336.0" y="273" width="92.39999999999999" height="74" rx="8" fill="#ffc53d" fill-opacity="0.08" stroke="#ffc53d" stroke-opacity="0.16"/>
+    <rect x="1336.0" y="353" width="92.39999999999999" height="64" rx="8" fill="#ffc53d" fill-opacity="0.05" stroke="#ffc53d" stroke-opacity="0.13"/>
+    <rect x="1434.4" y="273" width="125.19999999999999" height="144" rx="8" fill="#ffc53d" fill-opacity="0.15" stroke="#ffc53d" stroke-opacity="0.23"/>
+  </g>
+  <rect x="150" y="128" width="190" height="190" rx="40" fill="#161b22" stroke="url(#accent)" stroke-width="5"/><rect x="184" y="172" width="122" height="18" rx="9" fill="#e6edf3" fill-opacity="0.9"/><rect x="184" y="208" width="86" height="18" rx="9" fill="#e6edf3" fill-opacity="0.65"/><rect x="184" y="244" width="104" height="18" rx="9" fill="#e6edf3" fill-opacity="0.45"/><path d="M262 146 L220 232 L250 232 L234 300 L288 204 L256 204 Z" fill="url(#accent)" stroke="#0d1117" stroke-width="5" stroke-linejoin="round" filter="url(#glow)"/>
+  <g font-family="'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif">
+    <text x="400" y="200" font-size="150" font-weight="800" letter-spacing="-4" font-family="'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif"><tspan fill="#f0f3f6">volt</tspan><tspan fill="url(#accent)" filter="url(#glow)">dir</tspan></text>
+    <text x="404" y="282" font-size="44" font-weight="800" fill="#f0f3f6">Your disk, explained in one call.</text>
+    <text x="404" y="330" font-size="27" fill="#9da7b3">Read-only Windows disk analysis for AI agents.</text>
+    <rect x="400" y="366" width="151" height="44" rx="22" fill="#e6edf3" fill-opacity="0.07" stroke="#e6edf3" stroke-opacity="0.25"/><text x="475" y="395" text-anchor="middle" font-size="22" fill="#c9d1d9" font-weight="500">Read-only</text><rect x="564.88" y="366" width="269" height="44" rx="22" fill="#e6edf3" fill-opacity="0.07" stroke="#e6edf3" stroke-opacity="0.25"/><text x="700" y="395" text-anchor="middle" font-size="22" fill="#c9d1d9" font-weight="500">One .exe, no install</text><rect x="848.1199999999999" y="366" width="226" height="44" rx="22" fill="#ffc53d" fill-opacity="0.16" stroke="#ffc53d" stroke-opacity="0.7"/><text x="961" y="395" text-anchor="middle" font-size="22" fill="#ffc53d" font-weight="700">~1/10 the memory</text>
+  </g>
+  </g>
+</svg>

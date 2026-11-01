@@ -1,4 +1,4 @@
-# voltdir
+<p align="center"><img src="assets/ko/banner.svg" alt="voltdir: 디스크 전체를 한 번의 호출로." width="100%"></p>
 
 **다른 언어로 읽기:** [English](README.md) · [正體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · 한국어 · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md)
 

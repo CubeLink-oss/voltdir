@@ -1,4 +1,4 @@
-# voltdir
+<p align="center"><img src="assets/zh-TW/banner.svg" alt="voltdir: 一次呼叫，看懂整顆硬碟。" width="100%"></p>
 
 **閱讀語言：** [English](README.md) · 正體中文 · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md)
 
