@@ -88,9 +88,11 @@ voltdir tổng hợp ngay trong lúc duyệt: duyệt xong một thư mục là 
 
 Cùng một mô hình, cùng bộ câu hỏi, cùng quyền hạn, mỗi nhóm chạy 5 lần và đều trả lời đúng hết. Khoảng cách nằm ở các câu hỏi tiếp theo: khi đã lưu chỉ mục, mỗi câu mất khoảng 3–8 giây, còn agent đối chứng mất 7–33 giây để tính lại từ đầu. Phép so sánh ở cấp agent cần môi trường chạy agent; phương pháp được mô tả trong [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
-### Những chỗ voltdir chưa thắng
+### Quét một lần: thư mục có 1 triệu tệp
 
 ![Quét một lần: thư mục có 1 triệu tệp](assets/vi/chart-scan.svg)
+
+### Những chỗ voltdir chưa thắng
 
 | Hạng mục | Hiện trạng |
 |---|---|

@@ -88,9 +88,11 @@ voltdir aggregates as it streams: once a folder is finished it is folded into it
 
 Same model, same questions, same permissions, 5 runs per group, every answer correct. The gap comes from the follow-ups: with a saved index each one takes about 3–8 s, while the baseline agent spends 7–33 s recomputing. Agent-level runs need an agent harness; the method is described in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
-### Where voltdir does not win yet
+### Single scan: a folder with 1 million files
 
 ![Single scan, folder with 1 million files](assets/en/chart-scan.svg)
+
+### Where voltdir does not win yet
 
 | Area | Where it stands |
 |---|---|
