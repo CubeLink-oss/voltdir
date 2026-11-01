@@ -1,0 +1,12 @@
+{
+  "name": "voltdir",
+  "version": "0.0.1",
+  "description": "Read-only Windows disk analysis for AI agents: one call answers where the space went, follow-up questions reuse a saved index instead of rescanning.",
+  "author": {
+    "name": "CubeLink-oss"
+  },
+  "homepage": "https://github.com/CubeLink-oss/voltdir",
+  "repository": "https://github.com/CubeLink-oss/voltdir",
+  "license": "Apache-2.0",
+  "keywords": ["windows", "disk", "storage", "ntfs", "cli", "read-only"]
+}

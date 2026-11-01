@@ -1,0 +1,17 @@
+[package]
+name = "voltdir"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.94"
+license = "Apache-2.0"
+description = "Read-only Windows disk scanner CLI for AI agents"
+publish = false
+
+[dependencies]
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

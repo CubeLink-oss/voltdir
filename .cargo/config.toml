@@ -1,0 +1,3 @@
+[target.x86_64-pc-windows-msvc]
+# crt-static：不需要另外安裝 C 執行階段。/Brepro：連結器不寫入時間戳記，相同原始碼與工具鏈建置出相同的執行檔。
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/Brepro"]

@@ -1,0 +1,14 @@
+{
+  "name": "voltdir",
+  "owner": {
+    "name": "CubeLink-oss"
+  },
+  "plugins": [
+    {
+      "name": "voltdir",
+      "source": "./",
+      "description": "Read-only Windows disk analysis for AI agents, with a prebuilt voltdir.exe.",
+      "version": "0.0.1"
+    }
+  ]
+}
