@@ -1,5 +1,6 @@
 {
   "name": "voltdir",
+  "description": "voltdir: read-only Windows disk analysis for AI agents.",
   "owner": {
     "name": "CubeLink-oss"
   },
