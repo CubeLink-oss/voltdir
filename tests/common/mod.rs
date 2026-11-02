@@ -241,9 +241,20 @@ pub fn fixture(name: &str) -> PathBuf {
         .join("target")
         .join("fixtures")
         .join(name);
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("create fixture");
-    p
+    // Windows 刪掉資料夾之後，路徑有時還會短暫處於「待刪除」狀態（防毒或索引服務還握著它），
+    // 馬上重建偶爾會失敗；等一下重試就好，不要讓整個測試因此亂掉
+    let mut last_error = None;
+    for _ in 0..40 {
+        let _ = std::fs::remove_dir_all(&p);
+        match std::fs::create_dir_all(&p) {
+            Ok(()) => return p,
+            Err(e) => {
+                last_error = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+    }
+    panic!("create fixture {}: {:?}", p.display(), last_error);
 }
 
 /// 取得 type 與 path 相符的那一行。

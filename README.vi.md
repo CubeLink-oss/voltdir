@@ -6,7 +6,7 @@
 
 | Thư mục có 1 triệu tệp | Toàn bộ `C:\` (quản trị viên) | Agent trả lời 6 câu hỏi nối tiếp |
 |:---:|:---:|:---:|
-| Bộ nhớ **ít hơn khoảng 11 lần**<br>14,7 MB so với 163 MB | **Nhanh hơn khoảng 5,7 lần**<br>6,6 giây so với 37,5 giây | **Nhanh hơn khoảng 4,8 lần**<br>46 giây so với 220 giây |
+| Bộ nhớ **ít hơn khoảng 11 lần**<br>14 MB so với 163 MB | **Nhanh hơn khoảng 5,7 lần**<br>6,6 giây so với 37,5 giây | **Nhanh hơn khoảng 4,8 lần**<br>46 giây so với 220 giây |
 
 Mỗi phép so sánh lấy phương án nhanh nhất trong nhiều cách viết PowerShell/.NET tốt, là trung vị của 5 lần chạy. Số liệu đầy đủ, **kể cả những chỗ voltdir chưa thắng**, có trong [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md); các tập lệnh trong [`benchmarks/`](benchmarks/README.md) cho phép bạn chạy lại trên máy của mình.
 
@@ -14,6 +14,50 @@ Mỗi phép so sánh lấy phương án nhanh nhất trong nhiều cách viết 
 - **Một tệp `voltdir.exe` duy nhất** (x64, khoảng 0,75 MB): liên kết tĩnh C runtime, chỉ nạp các DLL có sẵn của Windows, không cần cài thêm thư viện phụ thuộc nào.
 - **Skill cho agent:** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md) (khoảng 4.500 ký tự) đi kèm tệp thực thi đã build sẵn, và bước đầu tiên luôn là `overview`.
 - Trạng thái: **ứng viên v1**, chỉ hỗ trợ Windows x64.
+
+## Trường hợp sử dụng: quét một lần, hỏi bao nhiêu lần tùy ý
+
+Hiếm khi ai chỉ hỏi agent "sao ổ đĩa đầy rồi?" đúng một lần. Các câu hỏi tiếp theo luôn xoay quanh cùng một thư mục: dự án nào lớn nhất, loại tệp nào chiếm nhiều nhất, có tệp lớn lâu không đụng tới nào có thể dọn không, từ tuần trước đến nay có gì thay đổi. Agent không có công cụ chuyên dụng sẽ duyệt lại cả thư mục cho mỗi câu hỏi, hoặc viết một đoạn script dùng một lần để làm việc đó. Mà script đó chậm hơn vẻ ngoài: một vòng lặp Python `os.scandir` thông thường mất gấp 2 đến 5 lần thời gian của voltdir để duyệt cùng một thư mục (số đo ở bên dưới).
+
+voltdir được tạo ra đúng cho kiểu làm việc này:
+
+1. **Quét một lần.** Một lệnh gọi duyệt thư mục, trả lời các câu hỏi thường gặp và lưu một chỉ mục nhỏ (khoảng 2 MB cho không gian làm việc 300.000 tệp).
+2. **Hỏi lại bao nhiêu lần cũng được.** Các câu hỏi tiếp theo đọc chỉ mục thay vì đọc đĩa, mỗi câu khoảng 0,05 giây.
+3. **Giữ bản chụp khi cần thêm.** Bản chụp (khoảng 157 MB cho cùng không gian làm việc) còn trả lời được `find`, và hai bản chụp trả lời "đã thay đổi gì?" bằng `diff`. Trên ổ đĩa rất lớn, lưu bản chụp mất nhiều thời gian hơn chỉ lưu chỉ mục.
+
+Câu trả lời của `overview` kết thúc bằng trường `next`: các lệnh chính xác nên chạy cho những câu hỏi tiếp theo có khả năng cao nhất, nên agent không phải đoán tham số.
+
+```mermaid
+flowchart LR
+    A["Người dùng: sao ổ đĩa đầy rồi?"] --> B["voltdir overview ĐƯỜNG_DẪN<br/>--save-index x.idx"]
+    B --> C{"Còn câu hỏi nữa không?"}
+    C -- "Thư mục lớn nhất, loại tệp, tệp rỗng" --> D["voltdir report --index x.idx<br/>khoảng 0,03 giây, không quét lại"]
+    D --> C
+    C -- "Tìm tệp cụ thể hoặc so sánh hai thời điểm" --> E["--save-snapshot<br/>rồi find / diff"]
+    C -- "Không" --> F["Trả lời người dùng"]
+    E --> F
+```
+
+Ví dụ cụ thể, trên một không gian làm việc của lập trình viên có khoảng 300.000 tệp:
+
+```powershell
+# Thứ Hai: một lần quét trả lời các câu hỏi thường gặp và để lại bản chụp cùng chỉ mục nhỏ (khoảng 3 giây)
+voltdir overview D:\Workspace --save-snapshot C:\Temp\ws-mon.ndjson
+
+# Mỗi câu hỏi tiếp theo đọc chỉ mục nhỏ, không đọc đĩa (mỗi câu khoảng 0,05 giây)
+voltdir report --snapshot C:\Temp\ws-mon.ndjson --top-dirs 20 --dir-depth 3   # dung lượng đi đâu?
+voltdir report --snapshot C:\Temp\ws-mon.ndjson --by-ext 15                    # những loại tệp nào?
+voltdir report --snapshot C:\Temp\ws-mon.ndjson --many-files 15                # đống tệp nhỏ nằm ở đâu?
+
+# Tìm kiếm đọc bản chụp (khoảng 1 giây)
+voltdir find --snapshot C:\Temp\ws-mon.ndjson --name package.json --sort size --limit 20
+
+# Thứ Sáu: quét lại và hỏi đã thay đổi gì (khoảng 3 giây)
+voltdir scan D:\Workspace --out C:\Temp\ws-fri.ndjson
+voltdir diff C:\Temp\ws-mon.ndjson C:\Temp\ws-fri.ndjson --top 30
+```
+
+**Số lượng cũng chính xác.** Trên không gian làm việc có khoảng 1.800 junction này, một vòng lặp Python `os.scandir` thông thường đếm nhiều hơn voltdir 28% số tệp (380.635 so với 296.839), vì nó đi vào mọi junction và đếm lại cùng những tệp đó. Mặc định voltdir không đi theo junction, và dữ liệu có liên kết cứng chỉ được tính một lần vào kích thước thực. Bạn có thể tự kiểm chứng: so sánh `voltdir overview <thư mục>` với `voltdir overview <thư mục> --follow-links junction`; lệnh thứ hai cho ra con số lớn hơn.
 
 ---
 
@@ -53,19 +97,6 @@ voltdir diff C:\Temp\monday.ndjson C:\Temp\friday.ndjson --match-roots
 
 Khi quét cả ổ đĩa, hãy mở PowerShell **với quyền quản trị viên** để voltdir dùng được engine `mft`, vốn đọc trực tiếp bảng tệp chính (MFT) của NTFS. Nếu không có quyền quản trị, voltdir tự chuyển sang engine `walk`; một số thư mục hệ thống sẽ không đọc được, và mục `coverage` trong đầu ra liệt kê đầy đủ từng vị trí đó.
 
-### Agent dùng voltdir như thế nào
-
-```mermaid
-flowchart LR
-    A["Người dùng: sao ổ đĩa đầy rồi?"] --> B["voltdir overview ĐƯỜNG_DẪN<br/>--save-index x.idx"]
-    B --> C{"Còn câu hỏi nữa không?"}
-    C -- "Thư mục lớn nhất, loại tệp, tệp rỗng" --> D["voltdir report --index x.idx<br/>khoảng 0,03 giây, không quét lại"]
-    D --> C
-    C -- "Tìm tệp cụ thể hoặc so sánh hai thời điểm" --> E["--save-snapshot<br/>rồi find / diff"]
-    C -- "Không" --> F["Trả lời người dùng"]
-    E --> F
-```
-
 ---
 
 ## Kết quả đo hiệu năng
@@ -92,15 +123,52 @@ Cùng một mô hình, cùng bộ câu hỏi, cùng quyền hạn, mỗi nhóm c
 
 ![Quét một lần: thư mục có 1 triệu tệp](assets/vi/chart-scan.svg)
 
+### So với một script Python thông thường
+
+![So với một script Python thông thường](assets/vi/chart-python.svg)
+
+Chỉ vài dòng Python là duyệt được một thư mục, nên dễ nghĩ rằng nó nhanh ngang nhau. Thực tế thì không. voltdir xong thư mục 1 triệu tệp trong 0,45 giây; một vòng lặp `os.scandir` thông thường mất 2,40 giây (gấp 5,3 lần), và thêm luồng còn làm nó chậm hơn do khóa trình thông dịch toàn cục (GIL) của Python. Trên không gian làm việc của lập trình viên và trên cả ổ đĩa, khoảng cách là khoảng 2 lần: khi có rất nhiều thư mục nhỏ, thời gian chủ yếu dành cho việc mở thư mục chứ không phải đọc tệp, và chi phí đó như nhau với mọi công cụ. Bộ nhớ gần như bằng nhau, vì một script Python cẩn thận cũng tổng hợp ngay khi duyệt.
+
+| Thư mục | Số tệp | Số thư mục | voltdir | Vòng lặp Python thông thường | Python mất |
+|---|---|---|---|---|---|
+| Thư mục đo hiệu năng | 1.000.000 | 5.059 | 0,45 giây | 2,40 giây | gấp 5,3 lần |
+| Không gian làm việc | 296.839 | 57.680 | 3,10 giây | 6,15 giây | gấp 2,0 lần |
+| Cả ổ đĩa | 1.913.115 | 142.848 | 9,82 giây | 19,69 giây | gấp 2,0 lần |
+
 ### Những chỗ voltdir chưa thắng
 
 | Hạng mục | Hiện trạng |
 |---|---|
-| Quét một lần không có quyền quản trị | Với 1 triệu tệp chỉ nhanh hơn phương án .NET tốt nhất khoảng 1,7 lần, còn với toàn bộ `C:\` thì chậm hơn (0,78 lần). Nút thắt là chi phí mở thư mục trên NTFS |
+| Quét một lần không có quyền quản trị | Với 1 triệu tệp nhanh hơn phương án .NET tốt nhất khoảng 2,5 lần, nhưng với toàn bộ `C:\` thì chậm hơn (0,78 lần). Nút thắt là chi phí mở thư mục trên NTFS |
 | Lượng token | Gần như tương đương phương án đối chứng; nhóm voltdir dùng nhiều hơn 4–10%. Mỗi lần gọi agent có khoảng 73.000 token chi phí cố định mà không công cụ nào giảm được |
 | Bộ nhớ khi quét cả ổ với quyền quản trị | 186 MB, ngang với cách viết .NET dạng luồng (177 MB), không vượt trội |
 
 Nguyên nhân được giải thích trong [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
+
+## Điểm mạnh và những điều cần lưu ý
+
+**Điểm mạnh**
+
+- **Số lượng đáng tin.** Junction và liên kết cứng được xử lý nên tổng số khớp với thực tế (xem phần trên).
+- **Không bỏ sót âm thầm.** Khi có thư mục không đọc được, mã thoát là 2 và `coverage` liệt kê từng nơi.
+- **Câu hỏi tiếp theo rất rẻ.** Có chỉ mục rồi thì mỗi câu khoảng 0,05 giây.
+- **Đầu ra ổn định.** Cùng đầu vào, cùng engine thì JSON giống nhau đến từng byte.
+
+**Do một đánh giá độc lập tìm ra, đã sửa ở 0.0.2.** Chúng tôi thử voltdir theo cách một agent thực sự dùng, và sửa mọi điều hóa ra là lỗi.
+
+- Mẫu viết bằng dấu gạch chéo xuôi (`--exclude "*/node_modules/*"`, `--path "*/src/*"`) trước đây không khớp với gì cả, và âm thầm như vậy: lệnh vẫn thành công nhưng không loại trừ gì. Giờ `/` và `\` có cùng ý nghĩa trong mọi mẫu.
+- Mẫu `--exclude` không khớp với đường dẫn nào giờ sẽ in cảnh báo ra stderr, nên gõ nhầm sẽ không còn lọt qua mà không ai biết.
+- Mọi lệnh đều chấp nhận `--json` (không thay đổi gì, đầu ra luôn là JSON) và `--follow-links none` (đó là mặc định).
+- `--help` giờ nói rõ mã thoát 2 là bình thường khi quét cả ổ đĩa, và engine `mft` cần những gì.
+
+**Những điều cần biết** (theo thiết kế, không phải lỗi)
+
+| Hành vi | Lý do | Cách làm |
+|---|---|---|
+| `find --snapshot ... --exclude` báo lỗi | Tùy chọn quét chỉ có tác dụng khi quét, không dùng khi đọc bản chụp | Loại trừ ngay lúc quét (`scan --exclude`), hoặc lọc bằng `--path` |
+| Quét cả ổ đĩa trả về mã thoát 2 | Các thư mục hệ thống như thùng rác không đọc được; kết quả vẫn hợp lệ và `coverage` liệt kê chúng | Trong script, coi 2 là "hoàn tất kèm cảnh báo", đừng coi là thất bại |
+| `find --limit` giữ các kết quả đầu theo thứ tự đường dẫn (mặc định 100) | Nếu không yêu cầu khác, kết quả được sắp theo đường dẫn | Dùng `--sort size` và so `matched_total` với số mục trong danh sách |
+| Lợi thế về tốc độ phụ thuộc hình dạng của cây thư mục | Khoảng 5 lần so với vòng lặp Python trên thư mục 1 triệu tệp, khoảng 2 lần trên không gian làm việc hoặc cả ổ đĩa (xem phần trên) | Chạy bài đo trên chính thư mục của bạn |
 
 ---
 
@@ -185,6 +253,10 @@ Một số trình quét bảo mật sẽ cảnh báo mọi skill có đi kèm t�
 | [`benchmarks/`](benchmarks/README.md) | Các tập lệnh đo có thể tái lập và [bản tóm tắt kết quả](benchmarks/RESULTS.md) |
 | `src/`, `tests/` | Mã nguồn và kiểm thử |
 | `scripts/` | CI, kiểm tra giấy phép, công cụ tạo dữ liệu kiểm thử |
+
+## Quyền riêng tư
+
+voltdir chạy hoàn toàn trên máy tính của bạn. Nó chỉ đọc tên, kích thước, thời gian và thuộc tính (không đọc nội dung tệp), không mở kết nối mạng và không thu thập gì. Nó chỉ ghi các tệp bạn yêu cầu bằng `--out`, `--save-index` và `--save-snapshot`; các tệp này chứa đường dẫn tệp, nên hãy coi là dữ liệu nhạy cảm. Khi một AI agent chạy voltdir, agent đọc kết quả đầu ra và nó trở thành một phần của cuộc trò chuyện giữa bạn và agent. Skill đi kèm yêu cầu agent xác nhận với bạn trước khi quét cả ổ đĩa, thư mục cá nhân hoặc thư mục trông có vẻ riêng tư, trừ khi chính bạn chỉ định thư mục đó. Nội dung đầy đủ nằm trong [`PRIVACY.md`](PRIVACY.md) (tiếng Anh). Câu hỏi và báo lỗi: [GitHub Issues](https://github.com/CubeLink-oss/voltdir/issues).
 
 ## Giấy phép
 

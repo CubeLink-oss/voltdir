@@ -383,14 +383,16 @@ fn walk_options(c: &Common) -> (usize, Vec<Vec<u16>>, walk::Options) {
     let threads = c
         .threads
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get()));
-    let exclude: Vec<Vec<u16>> = c
-        .exclude
-        .iter()
-        .map(|p| p.encode_wide().collect())
-        .collect();
+    let (exclude, exclude_hits) = walk::Options::with_exclude(
+        c.exclude
+            .iter()
+            .map(|p| p.encode_wide().collect())
+            .collect(),
+    );
     let opts = walk::Options {
         threads,
         exclude: exclude.clone(),
+        exclude_hits,
         follow_mount: c.follow.contains(&FollowKind::Mount),
         follow_symlink: c.follow.contains(&FollowKind::Symlink),
         follow_junction: c.follow.contains(&FollowKind::Junction),
@@ -413,6 +415,7 @@ fn scan_resolved(
     let started = timefmt::now_filetime();
     let clock = std::time::Instant::now();
     let (mut data, displays, engine) = scan_roots(displays, c, &opts)?;
+    warn_unmatched_excludes(c, &opts);
     snapshot::finalize(&mut data, c.hardlinks_dedupe, min_size);
     let finished = timefmt::now_filetime();
     let duration_ms = clock.elapsed().as_millis() as u64;
@@ -436,6 +439,20 @@ fn scan_resolved(
         duration_ms,
         threads,
     })
+}
+
+/// `--exclude` 樣式從頭到尾沒命中任何路徑時提醒一聲（結束代碼不變）。
+/// 這種情形多半是樣式寫錯；以前寫了 `*/node_modules/*` 這類樣式會悄悄什麼都不排除。
+fn warn_unmatched_excludes(c: &Common, opts: &walk::Options) {
+    if c.quiet {
+        return;
+    }
+    for pattern in opts.unmatched_excludes() {
+        eprintln!(
+            "warning: --exclude '{}' matched no path; patterns match the whole path, for example *\\node_modules or *.tmp",
+            String::from_utf16_lossy(pattern)
+        );
+    }
 }
 
 fn volumes_of(displays: &[Vec<u16>]) -> Vec<sys::VolumeDetails> {
@@ -668,6 +685,7 @@ fn live_scan(
         let started = timefmt::now_filetime();
         let clock = std::time::Instant::now();
         let sum = stream::scan(&specs, &opts, c.hardlinks_dedupe, sink);
+        warn_unmatched_excludes(c, &opts);
         let finished = timefmt::now_filetime();
         return Ok(Live {
             engine: "walk",

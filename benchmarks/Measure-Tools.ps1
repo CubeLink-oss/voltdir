@@ -9,6 +9,8 @@
     powershell-gci  tools\Overview-Gci.ps1       （單一 Get-ChildItem 串流管線）
     dotnet-enum     tools\Overview-DotnetEnum.ps1（FileSystemEnumerable 精簡列舉）
     dotnet-enum-stream  tools\Overview-DotnetEnumStream.ps1（邊走邊彙總、記憶體不隨檔案數成長）
+    python-scandir  tools\Overview-PythonScandir.py（單執行緒的 os.scandir 迴圈，一般人會寫的 Python；需要 Python 3.12 以上）
+    python-scandir-threads  同一支腳本，用 -PythonThreads 個工作執行緒（預設 4；受 GIL 限制，實測比單執行緒慢）
   每個工具先跑 -Warmup 次暖機（不計入），再跑 -N 次量測；耗時為程序的牆鐘時間（含直譯器啟動與
   dotnet-enum 的 Add-Type 編譯），峰值記憶體為該程序的 PeakWorkingSet64（輪詢）。
   量測前後各取樣 5 秒的 CPU，若有其他程序平均占用超過半顆核心，紀錄會寫入 noise_warning（只寫程序名稱）。
@@ -35,13 +37,15 @@ param(
     # 冷快取用：每次量測前（不計時）執行的 PowerShell 命令，作用等同 hyperfine 的 --prepare；見 README
     [string]$Prepare,
     [int]$PollMs = 200,
+    # python-scandir-threads 的工作執行緒數
+    [int]$PythonThreads = 4,
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $Schema = 'voltdir.bench/1'
-$AllTools = @('voltdir-walk', 'voltdir-mft', 'voltdir-index', 'powershell-gci', 'dotnet-enum', 'dotnet-enum-stream')
+$AllTools = @('voltdir-walk', 'voltdir-mft', 'voltdir-index', 'powershell-gci', 'dotnet-enum', 'dotnet-enum-stream', 'python-scandir', 'python-scandir-threads')
 
 function Test-Elevated {
     ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -99,6 +103,12 @@ function Get-ToolCommand([string]$Tool, [string]$RootPath) {
         'dotnet-enum-stream' {
             @{ File = $pwsh; Args = @('-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'tools\Overview-DotnetEnumStream.ps1'), '-Root', $RootPath); Ok = @(0); Files = { param($j) $j.total_files } }
         }
+        { $_ -in 'python-scandir', 'python-scandir-threads' } {
+            $py = Get-Command python -ErrorAction SilentlyContinue
+            if (-not $py) { throw '找不到 python（python-scandir 需要 Python 3.12 以上）。' }
+            $threads = if ($Tool -eq 'python-scandir') { 1 } else { $PythonThreads }
+            @{ File = $py.Source; Args = @('-I', (Join-Path $PSScriptRoot 'tools\Overview-PythonScandir.py'), $RootPath, '--threads', "$threads"); Ok = @(0); Files = { param($j) $j.total_files } }
+        }
         default { throw "未知的工具 '$Tool'（可用：$($AllTools -join '、')）。" }
     }
 }
@@ -132,7 +142,7 @@ function Get-SessionPlan([string]$Tool, [string]$RootPath, [string]$Snap) {
                 (& $q @('--top-files', '20')),
                 @{ File = $Exe; Args = @('overview', '--index', $idx, '--rank', 'logical', '-q'); Ok = @(0, 2); Files = $null })
         }
-        'dotnet-enum-stream' { @($first) }
+        { $_ -in 'dotnet-enum-stream', 'python-scandir', 'python-scandir-threads' } { @($first) }
         default { @($first, $first, $first, $first, $first, $first) }
     }
 }
@@ -335,6 +345,13 @@ function Invoke-SelfTest {
     & $check 'B3 voltdir-index 計畫：1 次 --save-index 加 5 個走 --index 的追問，沒有快照' (($ip.Count -eq 6) -and ($ip[0].Args -contains '--save-index') -and ($ip[0].Args -notcontains '--save-snapshot') -and (($ip[1..5] | ForEach-Object { $_.Args -contains '--index' }) -notcontains $false))
     & $check 'B3 一次走訪算完的對照組只走 1 次' (@(Get-SessionPlan 'dotnet-enum-stream' 'X:
 ' 'X:\s').Count -eq 1)
+    # Python 對照組：一次走訪算出所有答案（追問只跑 1 次）；單執行緒與多執行緒版本只差 --threads
+    if (Get-Command python -ErrorAction SilentlyContinue) {
+        $p1 = Get-ToolCommand 'python-scandir' 'X:'
+        $pn = Get-ToolCommand 'python-scandir-threads' 'X:'
+        & $check 'python-scandir 用 1 個執行緒、python-scandir-threads 用 -PythonThreads 個' (($p1.Args[-1] -eq '1') -and ($pn.Args[-1] -eq "$PythonThreads") -and ($p1.Args -contains '-I'))
+        & $check 'B3 Python 對照組一次走訪算完，只走 1 次' (@(Get-SessionPlan 'python-scandir' 'X:' 'X:\s').Count -eq 1)
+    }
     $fr = @(New-ToolRecords -TaskId 'B3' -Tool 'voltdir-walk' -Seconds @(1, 1, 1, 1, 1) -PeakMb @(10, 10, 10, 10, 10) -Elevated $false -NoiseWarning $null -VoltdirVersion 'selftest' -Notes 'selftest' -CacheState 'warm' -VariantName $null -Followup @(0.1, 0.1, 0.1, 0.1, 0.1))
     & $check 'B3 紀錄多一個 followup_seconds 指標' (($fr.Count -eq 3) -and ($fr.metric -contains 'followup_seconds'))
 

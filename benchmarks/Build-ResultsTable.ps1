@@ -5,7 +5,7 @@
   誠實規則（設計文件第 3 節）在這裡強制執行，而不是靠人記得：
   - 每格至少 n = 5 才顯示倍數，否則顯示「樣本不足」。
   - 倍數只在同一個 metric 內計算，並一律標明量的是什麼。
-  - 對照組取最佳者（powershell-gci、dotnet-enum、dotnet-enum-stream；耗時取最快、記憶體取最低，每個 metric 各自挑）。
+  - 對照組取最佳者（powershell-gci、dotnet-enum、dotnet-enum-stream、python-scandir、python-scandir-threads；耗時取最快、記憶體取最低，每個 metric 各自挑）。
   - voltdir 較慢時照實顯示（倍數小於 1），不隱藏。
   - 答錯的 agent 執行不計入倍數，但顯示「答錯 k 次」。
   - 提權與非提權不得混在同一格；快取狀態（warm/cold）也不得混用。
@@ -35,7 +35,7 @@ $TaskTitles = @{
     B5 = '100 萬檔案的資料夾，一次問常見問題'
 }
 $VoltdirTools = @('voltdir-walk', 'voltdir-mft', 'voltdir-index')
-$BaselineTools = @('powershell-gci', 'dotnet-enum', 'dotnet-enum-stream')
+$BaselineTools = @('powershell-gci', 'dotnet-enum', 'dotnet-enum-stream', 'python-scandir', 'python-scandir-threads')
 $MetricInfo = @{
     tool_seconds  = @{ kind = 'tool'; label = '工具耗時'; unit = 's' }
     peak_ws_mb    = @{ kind = 'tool'; label = '峰值記憶體'; unit = 'MB' }

@@ -21,6 +21,9 @@ usage:
 Run 'voltdir help <command>' for every option with its default and allowed range.
 Exit codes: 0 ok, 1 usage error, 2 finished but some directories were not readable,
 3 engine unavailable, 4 output failed, 5 cancelled.
+Exit code 2 is normal for a whole drive (system folders such as the recycle bin cannot be read):
+the result is valid and 'coverage' lists what was skipped.
+The mft engine needs administrator rights and the root of a local NTFS volume; otherwise walk is used.
 ";
 
 pub const INFO: &str = "usage: voltdir info [--json]
@@ -43,9 +46,13 @@ fn scan_common() -> &'static str {
                               (report and overview use at most 3 unless you set it: more threads
                               do not make folder listing faster on the machines measured)
   -q, --quiet                 no progress or summary on stderr. default: off
+      --json                  accepted for symmetry; the output is always JSON
       --log text|json         format of stderr messages and errors. default: text
       --exclude <GLOB>        skip matching paths; may be repeated. default: none
-      --follow-links <KIND>   mount, symlink or junction (comma list, may be repeated). default: none
+                              matches the whole path, / and \\ are the same, * crosses folders:
+                              *\\node_modules or */node_modules/*. warns if a pattern matches nothing
+      --follow-links <KIND>   none, mount, symlink or junction (comma list, may be repeated).
+                              default: none (follow nothing)
       --hardlinks dedupe|none default: dedupe
       --timeout-sec <N>       integer 1 to 31536000. default: no timeout"
 }
@@ -139,7 +146,7 @@ Lists the entries that match every filter given.
 filters:
       --name <GLOB>           * and ? only, case-insensitive. default: any name
       --name-regex <RE>       regular expression on the name (not with --name). default: none
-      --path <GLOB>           match the whole path. default: any path
+      --path <GLOB>           match the whole path; / and \\ are the same. default: any path
       --type file|dir|any     default: file
       --ext <.a,.b>           each entry starts with a dot. default: any (excludes directories)
       --min-size <SIZE>       default: 0
@@ -172,13 +179,14 @@ For different paths (for example monday vs friday copies of one folder) use --ma
 options:
       --top <N>               integer 1 to 1000. default: 50
       --min-change <SIZE>     ignore changes smaller than this. default: 0
-      --under <GLOB>          only paths matching this. default: everything
+      --under <GLOB>          only paths matching this; / and \\ are the same. default: everything
       --rank direct|rollup    rank directories by their own files or by everything below. default: direct
       --match-roots           treat the single root of A and the single root of B as the same folder; output paths become relative to it (rebased: true)
       --a-root <PATH>         with --b-root: the folder inside A to line up with --b-root inside B (use when a snapshot has several roots)
       --b-root <PATH>         see --a-root
   -o, --out <FILE|->          default: - (standard output); the parent folder must already exist
   -q, --quiet                 no warning on stderr. default: off
+      --json                  accepted for symmetry; the output is always JSON
       --log text|json        format of stderr errors. default: text
   -h, --help
 

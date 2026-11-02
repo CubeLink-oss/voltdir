@@ -24,7 +24,9 @@ public static class OverviewEnum
 {
     public static string Run(string root, int top, int topExt)
     {
-        string rootFull = Path.GetFullPath(root).TrimEnd('\\');
+        // 磁碟機根目錄要保留結尾的反斜線：「F:」指的是 F: 的目前資料夾，不是它的根目錄
+        string rootFull = Path.GetFullPath(root);
+        if (rootFull.Length > 3) rootFull = rootFull.TrimEnd('\\');
         var opt = new EnumerationOptions
         {
             RecurseSubdirectories = true,

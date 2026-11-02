@@ -4,7 +4,6 @@
 //! 解析執行緒逐筆解析 → 合併延伸記錄 → 由根目錄（記錄 5）往下建立 `ScanData`。
 //! 結果與 `walk` 引擎使用同一個資料模型，之後的去重、滾算、輸出完全共用。
 
-use crate::glob;
 use crate::model::*;
 use crate::names::cmp_names;
 use crate::ntfs::{self, Record, Run};
@@ -766,7 +765,7 @@ fn build_tree(
             }
             if want_path {
                 let p = join(&dir_path, units);
-                if opts.exclude.iter().any(|pat| glob::matches(pat, &p)) {
+                if opts.is_excluded(&p) {
                     continue;
                 }
             }
@@ -821,7 +820,7 @@ fn build_tree(
             node.reserved = at_root && u64::from(child.number) < ntfs::RESERVED_RECORDS;
             let hidden_system_reparse = attrs & (ATTR_HIDDEN | ATTR_SYSTEM | ATTR_REPARSE)
                 == (ATTR_HIDDEN | ATTR_SYSTEM | ATTR_REPARSE);
-            if want_path && opts.exclude.iter().any(|p| glob::matches(p, &child_path)) {
+            if want_path && opts.is_excluded(&child_path) {
                 node.state = ScanState::Excluded;
             } else if hidden_system_reparse
                 || matches!(

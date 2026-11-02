@@ -93,7 +93,9 @@ public static class OverviewEnumStream
     public static string Run(string root, int top, int topExt)
     {
         Top = top;
-        string rootFull = Path.GetFullPath(root).TrimEnd('\\');
+        // 磁碟機根目錄要保留結尾的反斜線：「F:」指的是 F: 的目前資料夾，不是它的根目錄
+        string rootFull = Path.GetFullPath(root);
+        if (rootFull.Length > 3) rootFull = rootFull.TrimEnd('\\');
         long all = Walk(rootFull, 0, true);
         total = all;
         TopDirs.Sort((a, b) => { int c = b.Key.CompareTo(a.Key); return c != 0 ? c : string.CompareOrdinal(a.Value, b.Value); });

@@ -6,7 +6,7 @@
 
 | 100 萬個檔案的資料夾 | 整顆 `C:\`（系統管理員） | agent 連續追問 6 題 |
 |:---:|:---:|:---:|
-| 記憶體 **約少 11 倍**<br>14.7 MB 對 163 MB | 耗時 **約快 5.7 倍**<br>6.6 秒對 37.5 秒 | 耗時 **約快 4.8 倍**<br>46 秒對 220 秒 |
+| 記憶體 **約少 11 倍**<br>14 MB 對 163 MB | 耗時 **約快 5.7 倍**<br>6.6 秒對 37.5 秒 | 耗時 **約快 4.8 倍**<br>46 秒對 220 秒 |
 
 對照組都是寫得好的 PowerShell／.NET，取最強的一個；各 5 次取中位數。完整數字與**還沒贏的地方**見 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)，用 [`benchmarks/`](benchmarks/README.md) 的腳本可以在你的機器上重跑。
 
@@ -14,6 +14,50 @@
 - **單一 `voltdir.exe`**（x64，約 0.75 MB）：靜態連結 C 執行階段，只匯入 Windows 內建的 DLL，不用另外安裝任何相依套件。
 - **給 agent 的 skill：** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md)（約 4,500 字元），附建置好的執行檔，第一步一律是 `overview`。
 - 狀態：**v1 候選**，只支援 Windows x64。
+
+## 使用情境：掃描一次，想問幾次都可以
+
+沒有人只問 agent 一次「硬碟為什麼滿了」。接下來的追問一定還是同一個資料夾：哪些專案最大、哪種副檔名佔最多、有沒有久未修改的大檔可以處理、這禮拜多了什麼。沒有專用工具的 agent，每個問題都要重新走一遍資料夾，或是現寫一支用完即丟的腳本。而且那支腳本比看起來慢：一般的 Python `os.scandir` 迴圈走完同一個資料夾，要花 voltdir 的 2 到 5 倍時間（量測見下方）。
+
+voltdir 就是為這種問法設計的：
+
+1. **掃描一次。** 一次呼叫走完資料夾、回答常見問題，並存下一份精簡索引（30 萬個檔案的工作區約 2 MB）。
+2. **追問幾次都行。** 追問讀的是索引，不是磁碟，每次約 0.05 秒。
+3. **需要更多時，另存快照。** 快照（同一個工作區約 157 MB）還能回答 `find`；兩份快照用 `diff` 就能回答「這段時間多了什麼」。在很大的磁碟上，存快照比只存索引花更久。
+
+`overview` 的回答結尾有一個 `next` 欄位，列出最可能的下一步該執行的完整命令，agent 不必猜參數。
+
+```mermaid
+flowchart LR
+    A["使用者：硬碟為什麼滿了？"] --> B["voltdir overview 路徑<br/>--save-index x.idx"]
+    B --> C{"還有追問嗎？"}
+    C -- "最大的資料夾、副檔名、空檔案" --> D["voltdir report --index x.idx<br/>約 0.03 秒，不重掃"]
+    D --> C
+    C -- "找特定檔案，或比較兩個時間點" --> E["--save-snapshot<br/>再用 find／diff"]
+    C -- "沒有" --> F["回答使用者"]
+    E --> F
+```
+
+範例：一個約 30 萬個檔案的開發工作區。
+
+```powershell
+# 週一：掃描一次，回答常見問題，並留下快照與精簡索引（約 3 秒）
+voltdir overview D:\Workspace --save-snapshot C:\Temp\ws-mon.ndjson
+
+# 每個追問讀的是精簡索引，不是磁碟（各約 0.05 秒）
+voltdir report --snapshot C:\Temp\ws-mon.ndjson --top-dirs 20 --dir-depth 3   # 空間花在哪？
+voltdir report --snapshot C:\Temp\ws-mon.ndjson --by-ext 15                    # 哪些副檔名？
+voltdir report --snapshot C:\Temp\ws-mon.ndjson --many-files 15                # 小檔案堆在哪？
+
+# 搜尋讀的是快照（約 1 秒）
+voltdir find --snapshot C:\Temp\ws-mon.ndjson --name package.json --sort size --limit 20
+
+# 週五：再掃一次，問這幾天多了什麼（約 3 秒）
+voltdir scan D:\Workspace --out C:\Temp\ws-fri.ndjson
+voltdir diff C:\Temp\ws-mon.ndjson C:\Temp\ws-fri.ndjson --top 30
+```
+
+**計數也是對的。** 在這個含有約 1,800 個 junction 的工作區，一般的 Python `os.scandir` 迴圈會多算 28% 的檔案（380,635 個，voltdir 是 296,839 個），因為它會走進每個 junction，把同一批檔案再算一次。voltdir 預設不跟隨 junction，硬連結的資料在實際大小上只算一次。你可以自己驗證：比較 `voltdir overview <資料夾>` 和 `voltdir overview <資料夾> --follow-links junction`，後者會得到較大的那個數字。
 
 ---
 
@@ -53,19 +97,6 @@ voltdir diff C:\Temp\monday.ndjson C:\Temp\friday.ndjson --match-roots
 
 掃整顆磁碟請**以系統管理員身分**開 PowerShell，voltdir 才能用直接讀取 NTFS 主檔案表（MFT）的 `mft` 引擎。一般權限會自動改用 `walk` 引擎，部分系統資料夾會讀不到，輸出的 `coverage` 會逐一列出。
 
-### agent 怎麼用它
-
-```mermaid
-flowchart LR
-    A["使用者：硬碟為什麼滿了？"] --> B["voltdir overview 路徑<br/>--save-index x.idx"]
-    B --> C{"還有追問嗎？"}
-    C -- "最大的資料夾、副檔名、空檔案" --> D["voltdir report --index x.idx<br/>約 0.03 秒，不重掃"]
-    D --> C
-    C -- "找特定檔案，或比較兩個時間點" --> E["--save-snapshot<br/>再用 find／diff"]
-    C -- "沒有" --> F["回答使用者"]
-    E --> F
-```
-
 ---
 
 ## 基準結果
@@ -92,15 +123,52 @@ voltdir 邊走邊彙總：資料夾走完就併進上一層，不保留每個檔
 
 ![單次掃描：100 萬個檔案的資料夾](assets/zh-TW/chart-scan.svg)
 
+### 對比一般 Python 腳本
+
+![對比一般 Python 腳本](assets/zh-TW/chart-python.svg)
+
+幾行 Python 就能走完一個資料夾，所以很容易以為它做得一樣快。其實不然。100 萬個檔案的資料夾，voltdir 只要 0.45 秒；一般的 `os.scandir` 迴圈要 2.40 秒（慢 5.3 倍），而且加上執行緒反而更慢，因為 Python 有全域直譯器鎖（GIL）。在開發工作區與整顆磁碟上，差距約 2 倍：資料夾又多又小時，時間主要花在開啟資料夾而不是讀檔案，這個成本每個工具都一樣。記憶體差不多，因為寫得仔細的 Python 腳本也是邊走邊彙總。
+
+| 資料夾 | 檔案數 | 資料夾數 | voltdir | 一般 Python 迴圈 | Python 要花 |
+|---|---|---|---|---|---|
+| 基準資料夾 | 1,000,000 | 5,059 | 0.45 秒 | 2.40 秒 | 5.3 倍時間 |
+| 開發工作區 | 296,839 | 57,680 | 3.10 秒 | 6.15 秒 | 2.0 倍時間 |
+| 整顆磁碟 | 1,913,115 | 142,848 | 9.82 秒 | 19.69 秒 | 2.0 倍時間 |
+
 ### 還沒贏的地方
 
 | 項目 | 現況 |
 |---|---|
-| 一般權限的單次掃描 | 100 萬個檔案只比最強的 .NET 對照組快約 1.7 倍；整顆 `C:\` 反而較慢（0.78 倍）。瓶頸在 NTFS 開啟目錄的成本 |
+| 一般權限的單次掃描 | 100 萬個檔案比最強的 .NET 對照組快約 2.5 倍；整顆 `C:\` 反而較慢（0.78 倍）。瓶頸在 NTFS 開啟目錄的成本 |
 | token 用量 | 與對照組相近，voltdir 組多用 4% 到 10%。每次 agent 呼叫有約 7.3 萬 token 的固定開銷，任何工具都省不掉 |
 | 提權整碟的記憶體 | 186 MB，與 .NET 串流寫法（177 MB）打平，沒有領先 |
 
 原因說明見 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)。
+
+## 做得好的地方，以及要留意的地方
+
+**做得好的地方**
+
+- **可以信任的計數。** 有處理 junction 與硬連結，總量和實際相符（見上）。
+- **不會悄悄漏掉。** 有資料夾讀不到時，結束代碼是 2，`coverage` 會逐一列出。
+- **追問很便宜。** 有索引之後，每個問題約 0.05 秒。
+- **輸出穩定。** 同一份輸入、同一個引擎，輸出的 JSON 逐位元組相同。
+
+**由獨立評測找出，已在 0.0.2 修好。** 我們用 agent 實際會用的方式測試 voltdir，把確定是 bug 的都修掉了：
+
+- 樣式用正斜線（`--exclude "*/node_modules/*"`、`--path "*/src/*"`）以前什麼都比對不到，而且悄悄地：命令成功、什麼都沒排除。現在每個樣式裡的 `/` 和 `\` 意思相同。
+- `--exclude` 的樣式沒命中任何路徑時，現在會在 stderr 印出警告，打錯字不會再沒人發現。
+- 每個命令都接受 `--json`（沒有任何作用，輸出本來就是 JSON），也接受 `--follow-links none`（那就是預設）。
+- `--help` 現在說明整顆磁碟結束代碼 2 是正常的，以及 `mft` 引擎需要什麼。
+
+**要知道的事**（設計如此，不是 bug）：
+
+| 行為 | 原因 | 怎麼做 |
+|---|---|---|
+| `find --snapshot ... --exclude` 會報錯 | 掃描選項只在掃描時有效，讀快照時無效 | 掃描時就排除（`scan --exclude`），或用 `--path` 篩選 |
+| 整顆磁碟的掃描結束代碼是 2 | 資源回收筒等系統資料夾讀不到；結果有效，`coverage` 會列出 | 在腳本裡把 2 當成「完成但有警告」，不要當成失敗 |
+| `find --limit` 依路徑順序保留前幾筆（預設 100） | 沒有另外指定時，結果依路徑排序 | 用 `--sort size`，並比對 `matched_total` 與清單筆數 |
+| 速度優勢跟樹的形狀有關 | 100 萬個檔案的資料夾比 Python 迴圈快約 5 倍；開發工作區或整顆磁碟約 2 倍（見上） | 在你自己的資料夾上跑一次基準 |
 
 ---
 
@@ -185,6 +253,10 @@ Get-Content skills\voltdir\bin\voltdir.exe.sha256
 | [`benchmarks/`](benchmarks/README.md) | 可重現的基準腳本與[結果摘要](benchmarks/RESULTS.md) |
 | `src/`、`tests/` | 原始碼與測試 |
 | `scripts/` | CI、授權檢查、測試資料產生器 |
+
+## 隱私
+
+voltdir 完全在你的電腦上執行。它只讀取名稱、大小、時間與屬性（不讀檔案內容），不建立任何網路連線，也不蒐集任何資料。它只寫入你用 `--out`、`--save-index`、`--save-snapshot` 指定的檔案；這些檔案含有檔案路徑，請當成敏感資料保管。由 AI agent 執行 voltdir 時，agent 會讀到輸出內容，成為它與你對話的一部分。隨附的 skill 會要求 agent 在掃描整顆磁碟、個人資料夾或看起來涉及私人內容的資料夾之前先向你確認，除非是你自己指名的資料夾。完整說明見 [`PRIVACY.md`](PRIVACY.md)（英文）。問題與錯誤回報：[GitHub Issues](https://github.com/CubeLink-oss/voltdir/issues)。
 
 ## 授權
 

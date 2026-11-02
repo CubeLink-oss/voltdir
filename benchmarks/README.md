@@ -10,6 +10,7 @@
 - 已建置的 `target\release\voltdir.exe`（在儲存庫根目錄執行 `cargo build --release`）。
 - 一個**不在 C 槽**的位置放 100 萬檔案的測試資料（約 10 GB）。
 - 不需要安裝其他東西：`dotnet-enum` 與 `dotnet-enum-stream` 對照組用 PowerShell 內建的 `Add-Type` 編譯一小段 C#。
+- 只有量 Python 對照組（`python-scandir`、`python-scandir-threads`）時，才需要 Python 3.12 以上（在 `PATH` 上有 `python`）。
 
 ## 檔案
 
@@ -20,6 +21,7 @@
 | `Run-Elevated.ps1` | 系統管理員視窗用：量整顆磁碟（B1），可選擇同時量 100 萬檔案的樹 |
 | `Build-ResultsTable.ps1` | 把結果紀錄彙整成 Markdown 表，並強制執行下面的量法規則 |
 | `tools\Overview-*.ps1` | 三個對照組：`Get-ChildItem` 管線、精簡 .NET 列舉、邊走邊彙總的 .NET 串流 |
+| `tools\Overview-PythonScandir.py` | Python 對照組：一般人會寫的單執行緒 `os.scandir` 迴圈（`python-scandir`），以及多執行緒版本（`python-scandir-threads`，受 GIL 限制，實測比單執行緒慢） |
 | `RESULTS.md` | 上一次量測的結果摘要 |
 
 每支腳本都有 `-SelfTest`，不需要測試資料就能確認腳本本身正常。
@@ -36,7 +38,7 @@ pwsh -File benchmarks\Build-ResultsTable.ps1 -SelfTest
 pwsh -File benchmarks\New-BenchTree.ps1 -Root D:\voltdir-bench
 
 # 2. 一般權限：100 萬檔案的樹（B5），以及掃一次加 5 個追問（B3）
-pwsh -File benchmarks\Measure-Tools.ps1 -Task B5 -Root D:\voltdir-bench\tree -Tools voltdir-walk,dotnet-enum-stream,dotnet-enum,powershell-gci -N 5
+pwsh -File benchmarks\Measure-Tools.ps1 -Task B5 -Root D:\voltdir-bench\tree -Tools voltdir-walk,dotnet-enum-stream,dotnet-enum,powershell-gci,python-scandir,python-scandir-threads -N 5
 pwsh -File benchmarks\Measure-Tools.ps1 -Task B3 -Root D:\voltdir-bench\tree -Tools voltdir-index,dotnet-enum-stream -N 5
 
 # 3. 一般權限：整顆磁碟（B2；每次可能要一分鐘以上）
@@ -63,6 +65,7 @@ pwsh -File benchmarks\Build-ResultsTable.ps1 -ResultsDir benchmarks\results -Out
 ## 注意事項
 
 - **量的是什麼：** 耗時是程序從啟動到結束的牆鐘時間。PowerShell 對照組包含 `pwsh` 啟動（約 0.3 秒），`dotnet-enum` 另含 `Add-Type` 編譯（約 1 秒）；大資料夾上可以忽略，小資料夾上不行。
+- **差距跟資料夾的形狀有關：** 檔案多、資料夾少的樹（例如 100 萬個檔案放在約 5,000 個資料夾，平均每個資料夾約 200 個檔案）最能拉開差距；資料夾又多又小的樹（例如開發工作區的 `node_modules`），瓶頸變成「開啟每個資料夾」的成本，差距會縮小。所以同一個 Python 對照組，在不同的樹上會量到不同的倍數；`RESULTS.md` 把幾種樹都列出來。
 - **峰值記憶體：** 程序的 `PeakWorkingSet64`，每 200 毫秒輪詢一次。PowerShell 對照組的數字大多是 `pwsh` 宿主本身。
 - **雜訊：** 量測前後各取樣 5 秒 CPU，其他程序平均占用超過半顆核心時，紀錄會寫入程序名稱作為警告。看到警告時，請關掉那些程序後重量。
 - **冷快取：** 預設是暖快取。要量冷快取，請用 `-Cache cold -Prepare '<清快取的命令>'`，腳本會在每次量測前執行那個命令；沒給命令時不會標成 cold。Windows 上清檔案系統快取需要系統管理員，做法請自行驗證。

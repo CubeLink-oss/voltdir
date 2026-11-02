@@ -13,7 +13,9 @@ param(
     [int]$TopExt = 10
 )
 $ErrorActionPreference = 'SilentlyContinue'
-$rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+# 磁碟機根目錄要保留結尾的反斜線：「F:」指的是 F: 的目前資料夾，不是它的根目錄
+$rootFull = [System.IO.Path]::GetFullPath($Root)
+if ($rootFull.Length -gt 3) { $rootFull = $rootFull.TrimEnd('\') }
 $count = 0L; $total = 0L
 $ext = @{}; $dirs = @{}
 $top = [System.Collections.Generic.List[object]]::new()

@@ -466,6 +466,8 @@ fn parse_scan_or_report(args: Vec<OsString>, kind: Kind) -> Result<Command, CliE
                     }
                 };
             }
+            // 輸出本來就一律是 JSON；接受這個選項，是因為 agent 很自然會順手加上
+            "--json" => {}
             "--exclude" => {
                 let v = value(&name, inline, &mut i)?;
                 if v.is_empty() {
@@ -483,9 +485,11 @@ fn parse_scan_or_report(args: Vec<OsString>, kind: Kind) -> Result<Command, CliE
                         "mount" => FollowKind::Mount,
                         "symlink" => FollowKind::Symlink,
                         "junction" => FollowKind::Junction,
+                        // 預設就是什麼連結都不跟隨；明說 none 的人不該被擋下來
+                        "none" => continue,
                         other => {
                             return Err(CliError::Usage(format!(
-                                "invalid --follow-links '{other}' (expected mount, symlink or junction)"
+                                "invalid --follow-links '{other}' (expected none, mount, symlink or junction)"
                             )));
                         }
                     };
@@ -978,6 +982,7 @@ fn parse_diff(args: Vec<OsString>) -> Result<Command, CliError> {
             "--a-root" => a_root = Some(PathBuf::from(value(&mut i)?)),
             "--b-root" => b_root = Some(PathBuf::from(value(&mut i)?)),
             "--match-roots" => match_roots = true,
+            "--json" => {}
             "--out" | "-o" => {
                 let v = value(&mut i)?;
                 out = if v == "-" {
@@ -1147,6 +1152,31 @@ mod tests {
         ] {
             assert!(matches!(p(bad), Err(CliError::Usage(_))), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn json_and_follow_links_none_are_accepted() {
+        // agent 很自然會寫這兩個：--json（輸出本來就一律是 JSON）與 --follow-links none（那就是預設）
+        for cmd in [
+            &["scan", "C:\\a", "--out", "-", "--json"][..],
+            &["report", "C:\\a", "--top-files", "3", "--json"],
+            &["find", "C:\\a", "--name", "x", "--json"],
+            &["overview", "C:\\a", "--json"],
+            &["diff", "a.ndjson", "b.ndjson", "--json"],
+        ] {
+            assert!(p(cmd).is_ok(), "{cmd:?}: {:?}", p(cmd));
+        }
+        let none = scan(&["scan", "C:\\a", "--out", "-", "--follow-links", "none"]);
+        assert!(none.common.follow.is_empty());
+        let mixed = scan(&[
+            "scan",
+            "C:\\a",
+            "--out",
+            "-",
+            "--follow-links",
+            "none,junction",
+        ]);
+        assert_eq!(mixed.common.follow, [FollowKind::Junction]);
     }
 
     #[test]

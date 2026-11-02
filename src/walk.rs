@@ -5,7 +5,8 @@ use crate::glob;
 use crate::model::*;
 use crate::names::cmp_names;
 use crate::sys::{self, AlignedBuf, DirHandle};
-use std::sync::{Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
 pub(crate) const BATCH_BYTES: usize = 256 * 1024;
@@ -34,6 +35,9 @@ pub struct Options {
     pub threads: usize,
     /// 不分大小寫的路徑萬用字元
     pub exclude: Vec<Vec<u16>>,
+    /// 每個 `exclude` 樣式是否至少命中過一次，與 `exclude` 一一對應；掃描結束後用來指出「什麼都沒命中」的樣式。
+    /// 長度與 `exclude` 不同（例如預設值是空的）時不記錄。
+    pub exclude_hits: Arc<Vec<AtomicBool>>,
     pub follow_mount: bool,
     pub follow_symlink: bool,
     pub follow_junction: bool,
@@ -41,6 +45,47 @@ pub struct Options {
 }
 
 impl Options {
+    /// 建立排除樣式與對應的命中記錄。
+    pub fn with_exclude(exclude: Vec<Vec<u16>>) -> (Vec<Vec<u16>>, Arc<Vec<AtomicBool>>) {
+        let hits = Arc::new(exclude.iter().map(|_| AtomicBool::new(false)).collect());
+        (exclude, hits)
+    }
+
+    /// 這個路徑是否被任何 `--exclude` 樣式排除。有記錄命中時每個樣式都會比對（不提早結束），
+    /// 這樣才分得出哪些樣式從頭到尾沒用到。
+    pub(crate) fn is_excluded(&self, path: &[u16]) -> bool {
+        if self.exclude.is_empty() {
+            return false;
+        }
+        if self.exclude_hits.len() != self.exclude.len() {
+            return self.exclude.iter().any(|p| glob::matches(p, path));
+        }
+        let mut any = false;
+        for (pattern, hit) in self.exclude.iter().zip(self.exclude_hits.iter()) {
+            if glob::matches(pattern, path) {
+                // 先讀再寫：多執行緒掃描時避免每筆命中都去搶同一條快取線
+                if !hit.load(Ordering::Relaxed) {
+                    hit.store(true, Ordering::Relaxed);
+                }
+                any = true;
+            }
+        }
+        any
+    }
+
+    /// 掃描結束後，從頭到尾沒有命中任何項目的 `--exclude` 樣式。
+    pub fn unmatched_excludes(&self) -> Vec<&[u16]> {
+        if self.exclude_hits.len() != self.exclude.len() {
+            return Vec::new();
+        }
+        self.exclude
+            .iter()
+            .zip(self.exclude_hits.iter())
+            .filter(|(_, hit)| !hit.load(Ordering::Relaxed))
+            .map(|(pattern, _)| pattern.as_slice())
+            .collect()
+    }
+
     pub(crate) fn follows_any(&self) -> bool {
         self.follow_mount || self.follow_symlink || self.follow_junction
     }
@@ -267,8 +312,7 @@ fn excluded(opts: &Options, child_ext: &[u16]) -> bool {
     if opts.exclude.is_empty() {
         return false;
     }
-    let display = to_display(child_ext);
-    opts.exclude.iter().any(|p| glob::matches(p, &display))
+    opts.is_excluded(&to_display(child_ext))
 }
 
 fn handle_entry(out: &mut EnumOut, e: RawEntry<'_>, cx: &Ctx<'_>) {
