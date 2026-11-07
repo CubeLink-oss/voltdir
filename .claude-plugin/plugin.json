@@ -1,8 +1,8 @@
 {
   "name": "voltdir",
   "displayName": "voltdir",
-  "version": "0.0.2",
-  "description": "Read-only Windows disk analysis for AI agents: one call answers where the space went, follow-up questions reuse a saved index instead of rescanning.",
+  "version": "0.0.3",
+  "description": "Read-only Windows disk analysis for AI agents: where the space went, and the files you mean (photos, duplicates, PDFs that chat apps download), with every follow-up question answered from a saved index in about a second.",
   "author": {
     "name": "CubeLink-oss"
   },

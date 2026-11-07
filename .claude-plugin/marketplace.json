@@ -8,8 +8,8 @@
     {
       "name": "voltdir",
       "source": "./",
-      "description": "Read-only Windows disk analysis for AI agents, with a prebuilt voltdir.exe.",
-      "version": "0.0.2"
+      "description": "Read-only Windows disk analysis for AI agents: where the space went, and every follow-up in about a second. Ships a prebuilt voltdir.exe.",
+      "version": "0.0.3"
     }
   ]
 }

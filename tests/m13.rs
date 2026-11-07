@@ -96,12 +96,17 @@ fn t_ag_10_scan_writes_an_index_next_to_the_snapshot_and_no_index_turns_it_off()
         "{}",
         &head[..head.len().min(200)]
     );
-    // 資料夾裡只有快照與索引，沒有別的檔案（不建快取資料夾）
-    let names: Vec<_> = std::fs::read_dir(snap.parent().unwrap())
+    // 資料夾裡只有快照、彙總索引與名稱索引，沒有別的檔案（不建快取資料夾）
+    let mut names: Vec<_> = std::fs::read_dir(snap.parent().unwrap())
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names.len(), 2, "{names:?}");
+    names.sort();
+    assert_eq!(
+        names,
+        ["s.ndjson", "s.ndjson.idx", "s.ndjson.nidx"],
+        "{names:?}"
+    );
     // --no-index
     let base = fixture("m13_noindex_out");
     let s2 = base.join("s.ndjson");
@@ -336,7 +341,7 @@ fn t_ag_10_index_write_failure_does_not_fail_the_snapshot() {
 }
 
 #[test]
-fn t_ag_10_find_ignores_the_index() {
+fn t_ag_10_find_uses_the_name_index_and_not_the_summary_index() {
     let r = tree("m13_find");
     let snap = snap_with_index(&r, "m13_find_out", &[]);
     let res = run(&[
@@ -347,7 +352,9 @@ fn t_ag_10_find_ignores_the_index() {
         "*.txt",
     ]);
     assert_eq!(res.code, 0, "{}", res.stderr);
-    assert!(!res.stderr.contains("index"), "{}", res.stderr);
+    // find 用的是名稱索引（.nidx），彙總索引（.idx）不能回答 find
+    assert!(res.stderr.contains("index: used"), "{}", res.stderr);
+    assert!(!res.stderr.contains(".idx"), "{}", res.stderr);
 }
 
 /// B5 樹（100 萬檔案）：寫快照後的追問都在 0.5 秒內，索引 ≤ 5 MiB，輸出與沒有索引時相同。

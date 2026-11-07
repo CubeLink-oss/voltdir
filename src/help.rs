@@ -17,6 +17,7 @@ usage:
   voltdir report <PATH>... | --snapshot <FILE>  (--top-files|--top-dirs|--by-ext|--many-files <N>)... [options]
   voltdir find <PATH>... | --snapshot <FILE>  [filters] [options]
   voltdir diff <A> <B>  [options]
+  voltdir index <SNAPSHOT>  [options]   (adds the name index that makes 'find --snapshot' fast)
 
 Run 'voltdir help <command>' for every option with its default and allowed range.
 Exit codes: 0 ok, 1 usage error, 2 finished but some directories were not readable,
@@ -33,6 +34,21 @@ engine availability, the volumes (with free space), and the tool's limits.
 
 options:
   --json   accepted for symmetry; the output is always JSON (default: on, no other mode)
+  -h, --help
+";
+
+pub const INDEX: &str = "usage: voltdir index <SNAPSHOT> [options]
+
+Reads a snapshot written by 'scan --out' or 'overview --save-snapshot' and writes the name index
+<SNAPSHOT>.nidx next to it. 'find --snapshot' uses that index to answer in a fraction of a second
+instead of parsing the whole snapshot; the answers are byte for byte the same as without it.
+New snapshots get the index automatically (unless --no-index); use this for snapshots made earlier.
+It only reads the snapshot and writes the one new file. Nothing is printed to standard output.
+
+options:
+  -q, --quiet        no summary on stderr. default: off
+      --json         accepted for symmetry; there is no standard output
+      --log text|json  format of stderr messages and errors. default: text
   -h, --help
 ";
 
@@ -60,6 +76,7 @@ fn scan_common() -> &'static str {
 pub fn text(name: &str) -> Option<String> {
     let text = match name {
         "info" => INFO.to_string(),
+        "index" => INDEX.to_string(),
         "scan" => format!(
             "usage: voltdir scan <PATH>... [options]
 

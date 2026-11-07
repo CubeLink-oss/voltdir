@@ -12,7 +12,7 @@ voltdir is a read-only disk analysis tool. It runs on your computer and sends no
 
 ## What voltdir writes
 
-- Only what you ask for: the file given to `--out`, the index given to `--save-index`, the snapshot given to `--save-snapshot`, and the small `.idx` file written next to a snapshot (turn it off with `--no-index`).
+- Only what you ask for: the file given to `--out`, the index given to `--save-index`, the snapshot given to `--save-snapshot`, and the two small files written next to a snapshot, `.idx` and `.nidx` (a name index; turn both off with `--no-index`). `.nidx` holds only what the snapshot already holds: names, sizes, times and where each line sits in the snapshot.
 - While writing, it creates a temporary file in the destination folder and renames it when the write is complete. If the write fails, the temporary file is removed.
 - These files contain file and folder paths and sizes. They stay on your computer until you delete them. Treat them like a directory listing of your disk, because that is what they are.
 - voltdir never deletes, moves or changes any file or folder that it scans.

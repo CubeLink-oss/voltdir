@@ -244,6 +244,8 @@ pub struct Outcome {
     pub incomplete_dirs: u64,
     /// 因逾時或中斷而未處理的目錄數（結束代碼 5）
     pub cancelled_dirs: u64,
+    /// 項目的版面（寫名稱索引用）
+    pub layout: Layout,
 }
 
 /// 每個輸出區塊的項目數；區塊是平行序列化與依序寫出的單位。
@@ -251,10 +253,20 @@ const CHUNK_ENTRIES: usize = 4096;
 
 /// 輸出順序中的一個項目；`idx == u32::MAX` 表示目錄本身那一行。
 #[derive(Clone, Copy)]
-struct Item {
-    dir: u32,
-    idx: u32,
-    depth: u32,
+pub(crate) struct Item {
+    pub(crate) dir: u32,
+    pub(crate) idx: u32,
+    pub(crate) depth: u32,
+}
+
+/// 寫出快照時順便記下的版面：名稱索引靠它知道每個項目對應快照裡的哪一行、在檔案的哪個位置。
+pub struct Layout {
+    /// 第一個 `dir`／`file` 行的起點（meta 行的長度）
+    pub head_len: u64,
+    /// 依輸出順序的項目
+    pub items: Vec<Item>,
+    /// 每個項目那一行的位元組長度（含換行），與 `items` 一一對應
+    pub line_lens: Vec<u32>,
 }
 
 /// 目錄的完整路徑（Win32 形式）：根的顯示路徑加上沿父鏈的名稱。
@@ -300,8 +312,15 @@ impl PathCache {
     }
 }
 
-fn render_chunk(data: &ScanData, items: &[Item], cache: &mut PathCache, out: &mut Vec<u8>) {
+fn render_chunk(
+    data: &ScanData,
+    items: &[Item],
+    cache: &mut PathCache,
+    out: &mut Vec<u8>,
+    lens: &mut Vec<u32>,
+) {
     for it in items {
+        let before = out.len();
         cache.select(data, it.dir);
         let node = &data.dirs[it.dir as usize];
         if it.idx == u32::MAX {
@@ -314,20 +333,21 @@ fn render_chunk(data: &ScanData, items: &[Item], cache: &mut PathCache, out: &mu
             write_file(out, &cache.path, name, f, it.depth as usize);
             cache.path.truncate(base);
         }
+        lens.push((out.len() - before) as u32);
     }
 }
 
-/// 以多個執行緒序列化 `items`，依原順序寫到 `w`。
+/// 以多個執行緒序列化 `items`，依原順序寫到 `w`；回傳每個項目那一行的位元組長度。
 fn write_items<W: Write>(
     data: &ScanData,
     items: &[Item],
     chunk: usize,
     w: &mut W,
-) -> io::Result<()> {
+) -> io::Result<Vec<u32>> {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
     let nchunks = items.len().div_ceil(chunk);
     if nchunks == 0 {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let workers = std::thread::available_parallelism()
         .map_or(4, |n| n.get())
@@ -338,7 +358,7 @@ fn write_items<W: Write>(
     let written = AtomicUsize::new(0);
     let stop = AtomicBool::new(false);
     std::thread::scope(|s| {
-        let (tx, rx) = std::sync::mpsc::channel::<(usize, Vec<u8>)>();
+        let (tx, rx) = std::sync::mpsc::channel::<(usize, Vec<u8>, Vec<u32>)>();
         for _ in 0..workers {
             let tx = tx.clone();
             let (next, written, stop) = (&next, &written, &stop);
@@ -357,31 +377,34 @@ fn write_items<W: Write>(
                     }
                     let part = &items[i * chunk..items.len().min((i + 1) * chunk)];
                     let mut buf = Vec::with_capacity(part.len() * 400);
-                    render_chunk(data, part, &mut cache, &mut buf);
-                    if tx.send((i, buf)).is_err() {
+                    let mut lens = Vec::with_capacity(part.len());
+                    render_chunk(data, part, &mut cache, &mut buf, &mut lens);
+                    if tx.send((i, buf, lens)).is_err() {
                         break;
                     }
                 }
             });
         }
         drop(tx);
-        let mut pending: BTreeMap<usize, Vec<u8>> = BTreeMap::new();
+        let mut pending: BTreeMap<usize, (Vec<u8>, Vec<u32>)> = BTreeMap::new();
         let mut want = 0usize;
         let mut result: io::Result<()> = Ok(());
-        for (i, buf) in rx {
-            pending.insert(i, buf);
-            while let Some(b) = pending.remove(&want) {
+        let mut all_lens: Vec<u32> = Vec::with_capacity(items.len());
+        for (i, buf, lens) in rx {
+            pending.insert(i, (buf, lens));
+            while let Some((b, l)) = pending.remove(&want) {
                 if result.is_ok()
                     && let Err(e) = w.write_all(&b)
                 {
                     result = Err(e);
                     stop.store(true, Relaxed);
                 }
+                all_lens.extend_from_slice(&l);
                 want += 1;
                 written.store(want, Relaxed);
             }
         }
-        result
+        result.map(|()| all_lens)
     })
 }
 
@@ -789,8 +812,7 @@ fn write_snapshot_chunked<W: Write>(
     let emitted = items.len() as u64;
 
     // 第二步：平行序列化，依序寫出
-    write_items(data, &items, chunk, w)?;
-    drop(items);
+    let line_lens = write_items(data, &items, chunk, w)?;
 
     let mut out: Vec<u8> = Vec::with_capacity(4096);
     let _ = write!(
@@ -807,6 +829,11 @@ fn write_snapshot_chunked<W: Write>(
     Ok(Outcome {
         incomplete_dirs: cov.incomplete_dirs - cancelled,
         cancelled_dirs: cancelled,
+        layout: Layout {
+            head_len: head.len() as u64,
+            items,
+            line_lens,
+        },
     })
 }
 

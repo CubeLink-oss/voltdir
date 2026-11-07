@@ -186,8 +186,16 @@ pub struct Reader<'r, R: BufRead> {
     input: &'r mut R,
     line: Vec<u8>,
     line_no: usize,
+    /// 已讀過的位元組數，以及最近一個非空行的起點（名稱索引記錄原始行的位置用）
+    pos: Pos,
     meta: Parsed,
     summary: Option<(Totals, Coverage)>,
+}
+
+#[derive(Default, Clone, Copy)]
+struct Pos {
+    read: u64,
+    start: u64,
 }
 
 /// 讀下一個非空行（去掉換行）。回傳 `false` 表示檔案結束。
@@ -195,6 +203,7 @@ fn next_line(
     input: &mut impl BufRead,
     line: &mut Vec<u8>,
     line_no: &mut usize,
+    pos: &mut Pos,
 ) -> Result<bool, String> {
     loop {
         line.clear();
@@ -204,6 +213,8 @@ fn next_line(
         if n == 0 {
             return Ok(false);
         }
+        pos.start = pos.read;
+        pos.read += n as u64;
         *line_no += 1;
         while matches!(line.last(), Some(b'\n' | b'\r')) {
             line.pop();
@@ -218,7 +229,8 @@ impl<'r, R: BufRead> Reader<'r, R> {
     pub fn open(input: &'r mut R) -> Result<Self, String> {
         let mut line = Vec::with_capacity(4096);
         let mut line_no = 0usize;
-        if !next_line(input, &mut line, &mut line_no)? {
+        let mut pos = Pos::default();
+        if !next_line(input, &mut line, &mut line_no, &mut pos)? {
             return Err("snapshot is empty: no meta line".into());
         }
         let v = jsonin::parse(&line).map_err(|e| bad(line_no, e))?;
@@ -235,9 +247,15 @@ impl<'r, R: BufRead> Reader<'r, R> {
             input,
             line,
             line_no,
+            pos,
             meta,
             summary: None,
         })
+    }
+
+    /// 最近一次讀到的那一行在檔案中的（起點位元組，長度）；長度含換行。
+    pub fn line_span(&self) -> (u64, u32) {
+        (self.pos.start, (self.pos.read - self.pos.start) as u32)
     }
 
     pub fn meta(&self) -> &Parsed {
@@ -252,7 +270,7 @@ impl<'r, R: BufRead> Reader<'r, R> {
     /// 讀到下一個 `dir` 或 `file` 行並填入 `rec`；沒有更多資料（且已驗證到結尾）時回傳 `false`。
     pub fn next_into(&mut self, rec: &mut Rec) -> Result<bool, String> {
         loop {
-            if !next_line(self.input, &mut self.line, &mut self.line_no)? {
+            if !next_line(self.input, &mut self.line, &mut self.line_no, &mut self.pos)? {
                 return if self.summary.is_some() {
                     Ok(false)
                 } else {
@@ -402,6 +420,35 @@ mod tests {
             !meta.contains("\"type\"")
                 && !meta.contains("\"schema\"")
                 && meta.contains("tool_version")
+        );
+    }
+
+    #[test]
+    fn line_spans_cover_every_byte() {
+        // 空行與 \r\n 照舊被跳過，但位元組位置要把它們算進去
+        let text = format!("{META}\r\n\n{DIR}\n\n\n{FILE}\r\n{SUMMARY}\n");
+        let bytes = text.as_bytes();
+        let mut input = bytes;
+        let mut r = Reader::open(&mut input).unwrap();
+        let (off, len) = r.line_span();
+        assert_eq!(
+            &bytes[off as usize..(off as usize + len as usize)],
+            format!("{META}\r\n").as_bytes()
+        );
+        let mut rec = Rec::default();
+        let mut seen = Vec::new();
+        while r.next_into(&mut rec).unwrap() {
+            let (off, len) = r.line_span();
+            let slice = &bytes[off as usize..off as usize + len as usize];
+            let trimmed = slice.strip_suffix(b"\n").unwrap();
+            let trimmed = trimmed.strip_suffix(b"\r").unwrap_or(trimmed);
+            assert_eq!(trimmed, r.raw());
+            seen.push((off, len));
+        }
+        assert_eq!(seen.len(), 2);
+        assert!(
+            seen[0].0 + u64::from(seen[0].1) < seen[1].0,
+            "blank lines sit between"
         );
     }
 

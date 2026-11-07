@@ -19,6 +19,7 @@ mod jsonin;
 mod mft;
 mod model;
 mod names;
+mod nidx;
 mod ntfs;
 mod overview;
 mod regex;
@@ -104,6 +105,7 @@ fn main() -> ExitCode {
         Ok(Command::Find(a)) => run_find(a),
         Ok(Command::Diff(a)) => run_diff(a),
         Ok(Command::Overview(a)) => run_overview(a),
+        Ok(Command::Index(a)) => run_index(a),
         Err(CliError::Usage(m)) => {
             fail::print(
                 cli::usage_code(&m),
@@ -383,7 +385,7 @@ fn walk_options(c: &Common) -> (usize, Vec<Vec<u16>>, walk::Options) {
     let threads = c
         .threads
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get()));
-    let (exclude, exclude_hits) = walk::Options::with_exclude(
+    let (exclude, exclude_set) = walk::Options::with_exclude(
         c.exclude
             .iter()
             .map(|p| p.encode_wide().collect())
@@ -392,7 +394,7 @@ fn walk_options(c: &Common) -> (usize, Vec<Vec<u16>>, walk::Options) {
     let opts = walk::Options {
         threads,
         exclude: exclude.clone(),
-        exclude_hits,
+        exclude_set,
         follow_mount: c.follow.contains(&FollowKind::Mount),
         follow_symlink: c.follow.contains(&FollowKind::Symlink),
         follow_junction: c.follow.contains(&FollowKind::Junction),
@@ -860,14 +862,20 @@ fn run_scan(args: ScanArgs) -> Exit {
     if let Some(path) = &args.common.out
         && !args.common.no_index
     {
-        write_index(path, &s.data, emit, args.common.quiet);
+        write_index(path, &s.data, emit, &o.layout, args.common.quiet);
     }
     log_done(&args.common, &s, o.incomplete_dirs, o.cancelled_dirs);
     Exit::from_scan(o.incomplete_dirs, o.cancelled_dirs)
 }
 
 /// 在剛寫好的快照旁寫彙總索引。任何失敗都只是警告，不影響快照與結束代碼。
-fn write_index(snapshot_path: &Path, data: &ScanData, emit: snapshot::Emit, quiet: bool) {
+fn write_index(
+    snapshot_path: &Path,
+    data: &ScanData,
+    emit: snapshot::Emit,
+    layout: &snapshot::Layout,
+    quiet: bool,
+) {
     let result = index::build(snapshot_path, data, emit).and_then(|bytes| {
         write_atomic(&index::path_of(snapshot_path), |w| w.write_all(&bytes)).map_err(|e| {
             format!(
@@ -880,6 +888,20 @@ fn write_index(snapshot_path: &Path, data: &ScanData, emit: snapshot::Emit, quie
         && !quiet
     {
         eprintln!("warning: index not written ({why}); the snapshot itself is complete");
+    }
+    // 名稱索引（find --snapshot 用）；失敗同樣只是警告
+    let result = nidx::build_from_scan(snapshot_path, data, layout).and_then(|bytes| {
+        write_atomic(&nidx::path_of(snapshot_path), |w| w.write_all(&bytes)).map_err(|e| {
+            format!(
+                "cannot write {}: {e}",
+                nidx::path_of(snapshot_path).display()
+            )
+        })
+    });
+    if let Err(why) = result
+        && !quiet
+    {
+        eprintln!("warning: name index not written ({why}); the snapshot itself is complete");
     }
 }
 
@@ -1251,15 +1273,79 @@ fn run_find(args: FindArgs) -> Exit {
     let kind = filter.kind;
     let sort = match args.sort {
         cli::FindSort::Path => find::Sort::Path,
-        cli::FindSort::Size => find::Sort::Size,
         cli::FindSort::Mtime => find::Sort::Mtime,
+        cli::FindSort::Size => find::Sort::Size,
     };
     let needs_ext = filter.exts.is_some();
     let matcher = find::Matcher::new(filter, sort, args.limit);
     match &args.snapshot {
-        Some(path) => find_from_snapshot(&args, path, matcher, kind),
+        Some(path) => {
+            // 名稱索引只是加速器：任何一步失敗，都用全新的篩選器改走串流讀快照
+            let fresh = || {
+                filter_of(&args)
+                    .map(|f| find::Matcher::new(f, sort, args.limit))
+                    .expect("the pattern was already validated")
+            };
+            if let Some(exit) = find_with_name_index(&args, path, kind, &fresh) {
+                return exit;
+            }
+            find_from_snapshot(&args, path, fresh(), kind)
+        }
         None => find_live(&args, matcher, needs_ext),
     }
+}
+
+/// 用 `<快照>.nidx` 回答 `find --snapshot`。回傳 `None` 表示索引不能用（原因已印在 stderr），
+/// 呼叫端改走串流路徑；結果與串流路徑逐位元組相同。
+fn find_with_name_index(
+    args: &FindArgs,
+    path: &Path,
+    kind: find::Kind,
+    fresh: &dyn Fn() -> find::Matcher,
+) -> Option<Exit> {
+    let quiet = args.common.quiet;
+    let not_used = |why: &str| {
+        if !quiet {
+            eprintln!("index: not used ({why})");
+        }
+    };
+    let ix = match nidx::NameIndex::load(path) {
+        Ok(ix) => ix,
+        Err(why) => {
+            not_used(&why);
+            return None;
+        }
+    };
+    // 外框（meta、涵蓋範圍）用串流路徑現有的程式碼讀：只讀第一行與結尾的 summary 行
+    let open = || -> Result<snapread::Parsed, String> {
+        let file =
+            std::fs::File::open(path).map_err(|e| format!("cannot open the snapshot: {e}"))?;
+        let len = file.metadata().map_err(|e| e.to_string())?.len();
+        let mut input = std::io::BufReader::with_capacity(1 << 16, file);
+        let mut parsed = snapread::Reader::open(&mut input)?.meta().clone();
+        let (totals, coverage) = snapread::parse_summary(&index::summary_line(path, len)?)?;
+        parsed.totals = totals;
+        parsed.coverage = coverage;
+        Ok(parsed)
+    };
+    let parsed = match open() {
+        Ok(p) => p,
+        Err(why) => {
+            not_used(&why);
+            return None;
+        }
+    };
+    let mut matcher = fresh();
+    if let Err(why) = ix.query(path, &mut matcher) {
+        not_used(&why);
+        return None;
+    }
+    if !quiet {
+        let age = nidx::snapshot_age_seconds(path)
+            .map_or_else(String::new, |s| format!("built {} ago", nidx::age_text(s)));
+        eprintln!("index: used ({age})");
+    }
+    Some(emit_snapshot_find(args, matcher, &parsed, kind))
 }
 
 fn find_live(args: &FindArgs, mut matcher: find::Matcher, needs_ext: bool) -> Exit {
@@ -1407,6 +1493,16 @@ fn find_from_snapshot(
         Ok(p) => p,
         Err(m) => return invalid(m),
     };
+    emit_snapshot_find(args, matcher, &parsed, kind)
+}
+
+/// 讀快照（串流或名稱索引）之後共用的輸出：外框、`limited_*`、涵蓋範圍與結束代碼。
+fn emit_snapshot_find(
+    args: &FindArgs,
+    matcher: find::Matcher,
+    parsed: &snapread::Parsed,
+    kind: find::Kind,
+) -> Exit {
     let (matched, items, truncated) = matcher.finish();
     let mut meta_body = parsed.meta_body.clone();
     if meta_body.last() == Some(&b'}') {
@@ -1435,6 +1531,91 @@ fn find_from_snapshot(
             );
         }
         return Exit::Incomplete;
+    }
+    Exit::Ok
+}
+
+/// `voltdir index <SNAPSHOT>`：串流讀一份既有的快照，替它補寫名稱索引。
+fn run_index(args: cli::IndexArgs) -> Exit {
+    let path = &args.snapshot;
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            snapshot_unreadable(path, &e);
+            return Exit::Usage;
+        }
+    };
+    let mut input = std::io::BufReader::with_capacity(1 << 20, file);
+    let invalid = |m: String| {
+        snapshot_invalid(path, &m);
+        Exit::Usage
+    };
+    let mut reader = match snapread::Reader::open(&mut input) {
+        Ok(r) => r,
+        Err(m) => return invalid(m),
+    };
+    let mut rec = snapread::Rec::default();
+    let mut b = nidx::Builder::new();
+    loop {
+        match reader.next_into(&mut rec) {
+            Ok(true) => {
+                // 本工具寫的快照，根的 name 就是它的顯示路徑；不是這樣的快照不建索引
+                if rec.is_dir && rec.depth == 0 && rec.path != rec.name {
+                    fail::print(
+                        "name_index_unsupported",
+                        "a root folder's name differs from its path, so this snapshot was not written by this tool",
+                        "use 'find --snapshot' without the index, or scan again",
+                    );
+                    return Exit::Usage;
+                }
+                let (off, len) = reader.line_span();
+                b.push(&nidx::Row {
+                    is_dir: rec.is_dir,
+                    depth: rec.depth,
+                    name: &rec.name,
+                    ext: &rec.ext,
+                    logical: rec.logical,
+                    physical: rec.physical,
+                    mtime: rec.mtime,
+                    dir_empty: rec.is_dir && rec.rollup.files == 0 && rec.rollup.dirs == 0,
+                    line_off: off,
+                    line_len: len,
+                });
+            }
+            Ok(false) => break,
+            Err(m) => return invalid(m),
+        }
+    }
+    if let Err(m) = reader.finish() {
+        return invalid(m);
+    }
+    let entries = b.len();
+    let bytes = match b.finish(path) {
+        Ok(b) => b,
+        Err(why) => {
+            fail::print(
+                "name_index_unsupported",
+                &format!("cannot build the name index: {why}"),
+                "use 'find --snapshot' without the index, or scan again",
+            );
+            return Exit::Usage;
+        }
+    };
+    let target = nidx::path_of(path);
+    if let Err(e) = write_atomic(&target, |w| w.write_all(&bytes)) {
+        fail::print(
+            "output_failed",
+            &format!("cannot write {}: {e}", target.display()),
+            "choose a snapshot in a folder you can write to",
+        );
+        return Exit::OutputFailed;
+    }
+    if !args.quiet {
+        eprintln!(
+            "name index written: {} ({entries} entries, {} bytes)",
+            target.display(),
+            bytes.len()
+        );
     }
     Exit::Ok
 }
@@ -1570,17 +1751,27 @@ fn overview_live(args: &OverviewArgs) -> Exit {
             min_size: None,
             max_depth: None,
         };
+        let mut written = None;
         if let Err(e) = write_output(&Some(save.clone()), |w| {
-            snapshot::write_snapshot(data, &meta, emit, s.duration_ms, &mut Wrap(w)).map(|_| ())
+            written = Some(snapshot::write_snapshot(
+                data,
+                &meta,
+                emit,
+                s.duration_ms,
+                &mut Wrap(w),
+            )?);
+            Ok(())
         }) {
             return e;
         }
-        if !args.common.no_index {
+        if !args.common.no_index
+            && let Some(o) = &written
+        {
             let emit = snapshot::Emit {
                 min_size: None,
                 max_depth: None,
             };
-            write_index(save, data, emit, args.common.quiet);
+            write_index(save, data, emit, &o.layout, args.common.quiet);
         }
     }
     if let Some(path) = &args.save_index {

@@ -2,62 +2,65 @@
 
 **Đọc bằng:** [English](README.md) · [正體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · Tiếng Việt
 
+**Quét một lần, sau đó hỏi bao nhiêu câu tùy ý, mỗi câu khoảng một giây.**
+
 **Công cụ phân tích ổ đĩa Windows dành cho AI agent.** Chỉ một lệnh gọi là biết thứ gì đang chiếm chỗ trên ổ đĩa: thư mục lớn nhất, loại tệp tốn dung lượng nhất, tệp rỗng nằm ở đâu, và những gì mới tăng lên trong vài ngày qua. Chỉ đọc, một tệp thực thi duy nhất, đầu ra JSON có định dạng cố định.
 
-| Thư mục có 1 triệu tệp | Toàn bộ `C:\` (quản trị viên) | Agent trả lời 6 câu hỏi nối tiếp |
-|:---:|:---:|:---:|
-| Bộ nhớ **ít hơn khoảng 11 lần**<br>14 MB so với 163 MB | **Nhanh hơn khoảng 5,7 lần**<br>6,6 giây so với 37,5 giây | **Nhanh hơn khoảng 4,8 lần**<br>46 giây so với 220 giây |
+| Toàn bộ `C:\` (quản trị viên) | Bộ nhớ, 1 triệu tệp | Quét một lần, 1 triệu tệp | Agent hỏi liên tiếp |
+|:---:|:---:|:---:|:---:|
+| **nhanh hơn 5,7 lần**<br>6,6 giây so với 37,5 giây | **ít hơn 11 lần**<br>14 MB so với 163 MB | **nhanh hơn tới 117 lần**<br>so với Get-ChildItem; 2,5 lần so với mã .NET tốt nhất | **nhanh hơn 17,4 lần**<br>30 câu liên tiếp, mỗi câu khoảng 1 giây |
 
-Mỗi phép so sánh lấy phương án nhanh nhất trong nhiều cách viết PowerShell/.NET tốt, là trung vị của 5 lần chạy. Số liệu đầy đủ, **kể cả những chỗ voltdir chưa thắng**, có trong [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md); các tập lệnh trong [`benchmarks/`](benchmarks/README.md) cho phép bạn chạy lại trên máy của mình.
+> **Câu hỏi đầu tiên tốn thời gian như bất kỳ lần quét nào.** voltdir quét thư mục và dựng chỉ mục, và một script Python cẩn thận cũng không chậm hơn ở bước này (0,9 lần trên 2,6 triệu tệp). Lợi thế nằm ở mọi câu hỏi sau đó. Những chỗ voltdir chưa thắng được liệt kê bên dưới.
+
+**Toàn bộ `C:\` (quản trị viên): nhanh hơn 5,7 lần, 6,6 giây so với 37,5 giây.**
+
+![Toàn bộ C:\, khoảng 3,1 triệu tệp](assets/vi/chart-mft.svg)
+
+**Bộ nhớ, thư mục 1 triệu tệp: ít hơn khoảng 11 lần.**
+
+![Bộ nhớ đỉnh: thư mục có 1 triệu tệp](assets/vi/chart-memory.svg)
+
+**Quét một lần thư mục 1 triệu tệp: nhanh hơn tới 117 lần so với script Get-ChildItem thông thường, và 2,5 lần so với mã .NET mạnh nhất.**
+
+![Quét một lần: thư mục có 1 triệu tệp](assets/vi/chart-scan.svg)
+
+**Agent hỏi liên tiếp thay bạn: nhanh hơn 17,4 lần ở 30 câu, mỗi câu khoảng 1 giây.**
+
+![Câu hỏi tiếp theo: quét một lần, hỏi nhiều lần](assets/vi/chart-followups.svg)
+
+Số liệu đo trên các thư mục thật, so với những cách làm đối chứng được viết cẩn thận. Mọi con số (**kể cả chỗ voltdir chưa thắng**) nằm trong [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md), toàn bộ biểu đồ ở [trang benchmark](BENCHMARKS.vi.md), và các script trong [`benchmarks/`](benchmarks/README.md) giúp bạn tái hiện trên máy của mình.
 
 - **Chỉ đọc:** voltdir chỉ đọc tên, kích thước, thời gian và thuộc tính. Không đọc nội dung tệp, không xóa, không di chuyển, không kết nối mạng và không tự nâng quyền.
 - **Một tệp `voltdir.exe` duy nhất** (x64, khoảng 0,75 MB): liên kết tĩnh C runtime, chỉ nạp các DLL có sẵn của Windows, không cần cài thêm thư viện phụ thuộc nào.
-- **Skill cho agent:** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md) (khoảng 4.500 ký tự) đi kèm tệp thực thi đã build sẵn, và bước đầu tiên luôn là `overview`.
+- **Skill cho agent:** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md) (khoảng 5.600 ký tự) đi kèm tệp thực thi đã build sẵn, và bước đầu tiên luôn là `overview`.
 - Trạng thái: **ứng viên v1**, chỉ hỗ trợ Windows x64.
 
-## Trường hợp sử dụng: quét một lần, hỏi bao nhiêu lần tùy ý
+## Cứ nói bằng lời thường
 
-Hiếm khi ai chỉ hỏi agent "sao ổ đĩa đầy rồi?" đúng một lần. Các câu hỏi tiếp theo luôn xoay quanh cùng một thư mục: dự án nào lớn nhất, loại tệp nào chiếm nhiều nhất, có tệp lớn lâu không đụng tới nào có thể dọn không, từ tuần trước đến nay có gì thay đổi. Agent không có công cụ chuyên dụng sẽ duyệt lại cả thư mục cho mỗi câu hỏi, hoặc viết một đoạn script dùng một lần để làm việc đó. Mà script đó chậm hơn vẻ ngoài: một vòng lặp Python `os.scandir` thông thường mất gấp 2 đến 5 lần thời gian của voltdir để duyệt cùng một thư mục (số đo ở bên dưới).
+Bạn không cần viết mẫu tìm kiếm nào. Bạn nói với agent điều mình muốn, agent chuyển thành một lần tìm kiếm, còn voltdir trả lời từ chỉ mục mà không đọc nội dung của bất kỳ tệp nào.
 
-voltdir được tạo ra đúng cho kiểu làm việc này:
+| Bạn nói | voltdir tìm ra |
+|---|---|
+| “Zalo và WeChat cứ tự tải PDF về, tìm hết và phân loại giúp tôi” | Mọi tệp PDF trên các ổ đĩa bạn chỉ định (`C:` hay `F:` đều được): đến từ đâu (thư mục của ứng dụng nhắn tin, Downloads, màn hình nền), cũ đến mức nào, dung lượng, tệp nào giống hóa đơn hoặc hợp đồng, tệp nào trùng, dưới dạng danh sách để bạn quyết định |
+| “Sắp xếp giúp tôi ảnh chụp từ điện thoại” | Ảnh từ máy ảnh và điện thoại (`IMG_0001.JPG`, `PXL_…heic`), kèm thư mục, dung lượng và ngày của từng ảnh |
+| “Dọn giúp tôi các ảnh chụp màn hình” | Mọi tệp có tên kiểu `Ảnh chụp màn hình 2026-01-02.png`, dù lưu ở đâu |
+| “Thư mục Downloads có nhiều bản trùng không?” | Các bản sao như `báo cáo (1).pdf` và `báo cáo - Copy.docx`, dưới dạng danh sách ứng viên |
+| “Cái nào xóa đi cũng an toàn?” | Tệp tạm còn sót (`.bak`, `.old`, `.tmp`, tệp tải dở), trình cài đặt cũ và thư mục rỗng, kèm dung lượng và độ cũ. Đây là danh sách để bạn quyết định; voltdir không bao giờ xóa gì |
+| “Tìm giúp hóa đơn để khai thuế” | Các tệp có tên chứa `hóa đơn` hoặc `biên lai`; không mở tệp nào |
+| “Máy tôi có bao nhiêu dự án?” | Các thư mục chứa `package.json`, `Cargo.toml`, `pyproject.toml` hoặc `go.mod` |
 
-1. **Quét một lần.** Một lệnh gọi duyệt thư mục, trả lời các câu hỏi thường gặp và lưu một chỉ mục nhỏ (khoảng 2 MB cho không gian làm việc 300.000 tệp).
-2. **Hỏi lại bao nhiêu lần cũng được.** Các câu hỏi tiếp theo đọc chỉ mục thay vì đọc đĩa, mỗi câu khoảng 0,05 giây.
-3. **Giữ bản chụp khi cần thêm.** Bản chụp (khoảng 157 MB cho cùng không gian làm việc) còn trả lời được `find`, và hai bản chụp trả lời "đã thay đổi gì?" bằng `diff`. Trên ổ đĩa rất lớn, lưu bản chụp mất nhiều thời gian hơn chỉ lưu chỉ mục.
+Các mẫu tìm kiếm mà agent thực sự dùng đã được kiểm thử và liệt kê trong [`skills/voltdir/reference.md`](skills/voltdir/reference.md).
 
-Câu trả lời của `overview` kết thúc bằng trường `next`: các lệnh chính xác nên chạy cho những câu hỏi tiếp theo có khả năng cao nhất, nên agent không phải đoán tham số.
+### Các tệp PDF mà ứng dụng nhắn tin tự tải về
 
-```mermaid
-flowchart LR
-    A["Người dùng: sao ổ đĩa đầy rồi?"] --> B["voltdir overview ĐƯỜNG_DẪN<br/>--save-index x.idx"]
-    B --> C{"Còn câu hỏi nữa không?"}
-    C -- "Thư mục lớn nhất, loại tệp, tệp rỗng" --> D["voltdir report --index x.idx<br/>khoảng 0,03 giây, không quét lại"]
-    D --> C
-    C -- "Tìm tệp cụ thể hoặc so sánh hai thời điểm" --> E["--save-snapshot<br/>rồi find / diff"]
-    C -- "Không" --> F["Trả lời người dùng"]
-    E --> F
-```
+Zalo, Messenger, WeChat và các ứng dụng nhắn tin tương tự lưu mọi tệp PDF nhận được vào thư mục riêng của chúng, và hầu như không ai mở các thư mục đó ra xem. Trên một máy tính thật, 371 trong số 728 tệp PDF trên ổ đĩa nằm trong thư mục của WeChat. Hãy quét một lần rồi lần lượt hỏi: có bao nhiêu tệp và nặng bao nhiêu; tệp nào đến từ ứng dụng nào; tệp nào cũ hơn một năm; tệp nào giống hóa đơn hoặc hợp đồng; tệp nào tải trùng. Bảy câu hỏi như vậy mất tổng cộng 1,25 giây sau khi quét, vì tìm PDF dùng phần mở rộng tệp chứ không dùng mẫu tên. Sau đó agent đề xuất cấu trúc thư mục và danh sách di chuyển; voltdir chỉ đọc tên nên sẽ không mở, di chuyển hay xóa tệp nào cho đến khi bạn đồng ý.
 
-Ví dụ cụ thể, trên một không gian làm việc của lập trình viên có khoảng 300.000 tệp:
+## Được làm cho agent
 
-```powershell
-# Thứ Hai: một lần quét trả lời các câu hỏi thường gặp và để lại bản chụp cùng chỉ mục nhỏ (khoảng 3 giây)
-voltdir overview D:\Workspace --save-snapshot C:\Temp\ws-mon.ndjson
-
-# Mỗi câu hỏi tiếp theo đọc chỉ mục nhỏ, không đọc đĩa (mỗi câu khoảng 0,05 giây)
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --top-dirs 20 --dir-depth 3   # dung lượng đi đâu?
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --by-ext 15                    # những loại tệp nào?
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --many-files 15                # đống tệp nhỏ nằm ở đâu?
-
-# Tìm kiếm đọc bản chụp (khoảng 1 giây)
-voltdir find --snapshot C:\Temp\ws-mon.ndjson --name package.json --sort size --limit 20
-
-# Thứ Sáu: quét lại và hỏi đã thay đổi gì (khoảng 3 giây)
-voltdir scan D:\Workspace --out C:\Temp\ws-fri.ndjson
-voltdir diff C:\Temp\ws-mon.ndjson C:\Temp\ws-fri.ndjson --top 30
-```
-
-**Số lượng cũng chính xác.** Trên không gian làm việc có khoảng 1.800 junction này, một vòng lặp Python `os.scandir` thông thường đếm nhiều hơn voltdir 28% số tệp (380.635 so với 296.839), vì nó đi vào mọi junction và đếm lại cùng những tệp đó. Mặc định voltdir không đi theo junction, và dữ liệu có liên kết cứng chỉ được tính một lần vào kích thước thực. Bạn có thể tự kiểm chứng: so sánh `voltdir overview <thư mục>` với `voltdir overview <thư mục> --follow-links junction`; lệnh thứ hai cho ra con số lớn hơn.
+- **Nói rõ điều nó chưa thấy.** Thư mục không đọc được nằm trong `coverage` và mã thoát là 2, nên một câu trả lời thiếu không bị coi là đầy đủ.
+- **Không bị dắt mũi bằng lời lẽ.** Tên tệp chỉ là dữ liệu. Ký tự điều khiển và thủ thuật chữ viết từ phải sang trái đều được thoát, nên tệp tên “bỏ qua các chỉ dẫn trước đó…” vẫn chỉ là một cái tên.
+- **Cho biết câu trả lời mới đến đâu.** stderr có dòng `index: used (built 12 minutes ago)`.
+- **Agent nào cũng tìm thấy.** Có skill và plugin cho Claude, cùng một tệp [`AGENTS.md`](AGENTS.md) cho các agent đọc loại tệp này. Chỉ là dòng lệnh thông thường, không có máy chủ nào phải chạy.
 
 ---
 
@@ -89,7 +92,8 @@ voltdir overview D:\Projects
 voltdir overview D:\Projects --save-index C:\Temp\p.idx
 voltdir report --index C:\Temp\p.idx --top-dirs 20 --by-ext 15
 
-# Chỉ lưu bản chụp đầy đủ khi cần find hoặc diff
+# Chỉ lưu ảnh chụp nhanh đầy đủ khi cần find hoặc diff; nó cũng ghi chỉ mục tên, nên mọi lần
+# find --snapshot sau đó trả lời trong chưa đến một giây (ảnh chụp nhanh cũ: voltdir index TỆP)
 voltdir overview D:\Projects --save-snapshot C:\Temp\p.ndjson
 voltdir find --snapshot C:\Temp\p.ndjson --ext .log --min-size 100M --sort size --limit 20
 voltdir diff C:\Temp\monday.ndjson C:\Temp\friday.ndjson --match-roots
@@ -101,44 +105,14 @@ Khi quét cả ổ đĩa, hãy mở PowerShell **với quyền quản trị viê
 
 ## Kết quả đo hiệu năng
 
-Mọi con số dưới đây đều lấy từ các bài đo có thể tái lập trong `benchmarks\`. Mỗi ô là trung vị của 5 lần chạy; lần đo nào có tiến trình nền đang dùng CPU đều được ghi chú là có nhiễu.
-
-### Bộ nhớ: thư mục có 1 triệu tệp
-
-![Bộ nhớ đỉnh: thư mục có 1 triệu tệp](assets/vi/chart-memory.svg)
-
-voltdir tổng hợp ngay trong lúc duyệt: duyệt xong một thư mục là gộp kết quả vào thư mục cha, không giữ bản ghi cho từng tệp. Phần lớn 163 MB của phương án đối chứng là bản thân tiến trình `pwsh`; một chương trình .NET biên dịch gốc sẽ dùng ít hơn.
-
-### Toàn bộ C:\ (quản trị viên)
-
-![Toàn bộ C:\, khoảng 3,1 triệu tệp](assets/vi/chart-mft.svg)
-
-### Agent trả lời các câu hỏi nối tiếp
-
-![Agent trả lời 6 câu hỏi nối tiếp](assets/vi/chart-agent.svg)
-
-Cùng một mô hình, cùng bộ câu hỏi, cùng quyền hạn, mỗi nhóm chạy 5 lần và đều trả lời đúng hết. Khoảng cách nằm ở các câu hỏi tiếp theo: khi đã lưu chỉ mục, mỗi câu mất khoảng 3–8 giây, còn agent đối chứng mất 7–33 giây để tính lại từ đầu. Phép so sánh ở cấp agent cần môi trường chạy agent; phương pháp được mô tả trong [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
-
-### Quét một lần: thư mục có 1 triệu tệp
-
-![Quét một lần: thư mục có 1 triệu tệp](assets/vi/chart-scan.svg)
-
-### So với một script Python thông thường
-
-![So với một script Python thông thường](assets/vi/chart-python.svg)
-
-Chỉ vài dòng Python là duyệt được một thư mục, nên dễ nghĩ rằng nó nhanh ngang nhau. Thực tế thì không. voltdir xong thư mục 1 triệu tệp trong 0,45 giây; một vòng lặp `os.scandir` thông thường mất 2,40 giây (gấp 5,3 lần), và thêm luồng còn làm nó chậm hơn do khóa trình thông dịch toàn cục (GIL) của Python. Trên không gian làm việc của lập trình viên và trên cả ổ đĩa, khoảng cách là khoảng 2 lần: khi có rất nhiều thư mục nhỏ, thời gian chủ yếu dành cho việc mở thư mục chứ không phải đọc tệp, và chi phí đó như nhau với mọi công cụ. Bộ nhớ gần như bằng nhau, vì một script Python cẩn thận cũng tổng hợp ngay khi duyệt.
-
-| Thư mục | Số tệp | Số thư mục | voltdir | Vòng lặp Python thông thường | Python mất |
-|---|---|---|---|---|---|
-| Thư mục đo hiệu năng | 1.000.000 | 5.059 | 0,45 giây | 2,40 giây | gấp 5,3 lần |
-| Không gian làm việc | 296.839 | 57.680 | 3,10 giây | 6,15 giây | gấp 2,0 lần |
-| Cả ổ đĩa | 1.913.115 | 142.848 | 9,82 giây | 19,69 giây | gấp 2,0 lần |
+Toàn bộ biểu đồ (bộ nhớ, cả ổ đĩa, agent hỏi nối tiếp, quét một lần, so với script Python thông thường) ở **[trang benchmark](BENCHMARKS.vi.md)**, số liệu trong [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
 ### Những chỗ voltdir chưa thắng
 
 | Hạng mục | Hiện trạng |
 |---|---|
+| Câu hỏi đầu tiên | Không nhanh hơn một script Python cẩn thận khi quét bằng quyền người dùng thường; cả hai đều chờ cùng chi phí mở thư mục NTFS (0,9 lần trên 2,6 triệu tệp). Lợi thế nằm ở các câu hỏi sau đó. |
+| Tìm kiếm bằng biểu thức chính quy | Tìm kiếm có nhiều lựa chọn mất khoảng 2 giây trên 2,6 triệu tên; bộ so khớp chưa được tối ưu. |
 | Quét một lần không có quyền quản trị | Với 1 triệu tệp nhanh hơn phương án .NET tốt nhất khoảng 2,5 lần, nhưng với toàn bộ `C:\` thì chậm hơn (0,78 lần). Nút thắt là chi phí mở thư mục trên NTFS |
 | Lượng token | Gần như tương đương phương án đối chứng; nhóm voltdir dùng nhiều hơn 4–10%. Mỗi lần gọi agent có khoảng 73.000 token chi phí cố định mà không công cụ nào giảm được |
 | Bộ nhớ khi quét cả ổ với quyền quản trị | 186 MB, ngang với cách viết .NET dạng luồng (177 MB), không vượt trội |
@@ -149,7 +123,7 @@ Nguyên nhân được giải thích trong [`benchmarks/RESULTS.md`](benchmarks/
 
 **Điểm mạnh**
 
-- **Số lượng đáng tin.** Junction và liên kết cứng được xử lý nên tổng số khớp với thực tế (xem phần trên).
+- **Số lượng đáng tin.** Junction và liên kết cứng được xử lý nên tổng số khớp với thực tế (xem [trang benchmark](BENCHMARKS.vi.md)).
 - **Không bỏ sót âm thầm.** Khi có thư mục không đọc được, mã thoát là 2 và `coverage` liệt kê từng nơi.
 - **Câu hỏi tiếp theo rất rẻ.** Có chỉ mục rồi thì mỗi câu khoảng 0,05 giây.
 - **Đầu ra ổn định.** Cùng đầu vào, cùng engine thì JSON giống nhau đến từng byte.
@@ -165,10 +139,10 @@ Nguyên nhân được giải thích trong [`benchmarks/RESULTS.md`](benchmarks/
 
 | Hành vi | Lý do | Cách làm |
 |---|---|---|
-| `find --snapshot ... --exclude` báo lỗi | Tùy chọn quét chỉ có tác dụng khi quét, không dùng khi đọc bản chụp | Loại trừ ngay lúc quét (`scan --exclude`), hoặc lọc bằng `--path` |
+| `find --snapshot ... --exclude` báo lỗi | Tùy chọn quét chỉ có tác dụng khi quét, không dùng khi đọc ảnh chụp nhanh | Loại trừ ngay lúc quét (`scan --exclude`), hoặc lọc bằng `--path` |
 | Quét cả ổ đĩa trả về mã thoát 2 | Các thư mục hệ thống như thùng rác không đọc được; kết quả vẫn hợp lệ và `coverage` liệt kê chúng | Trong script, coi 2 là "hoàn tất kèm cảnh báo", đừng coi là thất bại |
 | `find --limit` giữ các kết quả đầu theo thứ tự đường dẫn (mặc định 100) | Nếu không yêu cầu khác, kết quả được sắp theo đường dẫn | Dùng `--sort size` và so `matched_total` với số mục trong danh sách |
-| Lợi thế về tốc độ phụ thuộc hình dạng của cây thư mục | Khoảng 5 lần so với vòng lặp Python trên thư mục 1 triệu tệp, khoảng 2 lần trên không gian làm việc hoặc cả ổ đĩa (xem phần trên) | Chạy bài đo trên chính thư mục của bạn |
+| Lợi thế về tốc độ phụ thuộc hình dạng của cây thư mục | Khoảng 5 lần so với vòng lặp Python trên thư mục 1 triệu tệp, khoảng 2 lần trên không gian làm việc hoặc cả ổ đĩa (xem [trang benchmark](BENCHMARKS.vi.md)) | Chạy bài đo trên chính thư mục của bạn |
 
 ---
 
@@ -179,8 +153,8 @@ Nguyên nhân được giải thích trong [`benchmarks/RESULTS.md`](benchmarks/
 | `overview <PATH>... \| --snapshot <FILE> \| --index <FILE>` | **Trả lời các câu hỏi thường gặp trong một lần gọi** (khoảng 3 KB): tổng dung lượng, thư mục và tệp lớn nhất, phân bố loại tệp, tệp lớn lâu không sửa, tệp rỗng và thư mục rỗng, các vị trí không đọc được, cùng các lệnh `next` có thể chạy ngay. Tùy chọn: `--save-index`, `--save-snapshot`, `--rank physical\|logical`, `--dir-rank rollup\|direct`, `--detail concise\|full` | Một tài liệu JSON (`voltdir.overview/1`) |
 | `report <PATH>... \| --snapshot <FILE> \| --index <FILE>` | Tổng hợp trực tiếp: `--top-files`, `--top-dirs`, `--by-ext`, `--many-files` | Một tài liệu JSON (`voltdir.report/1`) |
 | `find <PATH>... \| --snapshot <FILE>` | Tìm theo tên (ký tự đại diện hoặc `--name-regex`), đường dẫn, loại, phần mở rộng, kích thước, ngày, hoặc rỗng hay không | Một tài liệu JSON (`voltdir.find/1`) |
-| `diff <A> <B>` | So sánh hai bản chụp: tăng lên, giảm đi, mới thêm, biến mất. Với hai bản chụp có đường dẫn khác nhau, thêm `--match-roots` (hoặc `--a-root` / `--b-root`) | Một tài liệu JSON (`voltdir.diff/1`) |
-| `scan <PATH>... --out <FILE>` | Chỉ xuất **bản chụp**. Bản chụp có thể lên tới hàng trăm MB nên bắt buộc có `--out`; muốn xuất ra stdout thì ghi rõ `--out -` | NDJSON (`voltdir.snapshot/1`) |
+| `diff <A> <B>` | So sánh hai ảnh chụp nhanh: tăng lên, giảm đi, mới thêm, biến mất. Với hai ảnh chụp nhanh có đường dẫn khác nhau, thêm `--match-roots` (hoặc `--a-root` / `--b-root`) | Một tài liệu JSON (`voltdir.diff/1`) |
+| `scan <PATH>... --out <FILE>` | Chỉ xuất **ảnh chụp nhanh**. Ảnh chụp nhanh có thể lên tới hàng trăm MB nên bắt buộc có `--out`; muốn xuất ra stdout thì ghi rõ `--out -` | NDJSON (`voltdir.snapshot/1`) |
 | `info` | Môi trường và khả năng: phiên bản, có nâng quyền hay không, các engine, các ổ đĩa | Một tài liệu JSON |
 
 Tùy chọn thường dùng: `--out <FILE|->`, `--engine auto|mft|walk`, `--threads <N>`, `--exclude <GLOB>`, `--follow-links mount|symlink|junction`, `--hardlinks dedupe|none`, `--timeout-sec <N>`, `-q`. Để xem cú pháp đầy đủ, chạy `voltdir --help` hoặc `voltdir help <lệnh>`.
@@ -201,7 +175,7 @@ Tùy chọn thường dùng: `--out <FILE|->`, `--engine auto|mft|walk`, `--thre
 | Mã | Ý nghĩa |
 |---|---|
 | 0 | Thành công trọn vẹn |
-| 1 | Sai cách dùng, kể cả bản chụp hoặc chỉ mục không dùng được, hay `diff` hai bản chụp có thư mục gốc không trùng nhau mà không có `--match-roots` |
+| 1 | Sai cách dùng, kể cả ảnh chụp nhanh hoặc chỉ mục không dùng được, hay `diff` hai ảnh chụp nhanh có thư mục gốc không trùng nhau mà không có `--match-roots` |
 | 2 | Kết quả hợp lệ nhưng **có thư mục không đọc được** (thường do bị từ chối truy cập). `coverage` liệt kê các vị trí đó; **không được coi là kết quả đầy đủ** |
 | 3 | Engine được chỉ định không dùng được (ví dụ `--engine mft` khi không có quyền quản trị, hoặc ổ đĩa không phải NTFS) |
 | 4 | Ghi tệp đầu ra thất bại (không để lại tệp ghi dở) |

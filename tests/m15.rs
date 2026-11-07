@@ -424,7 +424,31 @@ fn t_ag_12_the_scan_with_save_index_uses_the_streaming_path() {
             from_idx.get("reports").clone(),
         ));
     }
-    assert!(seen.windows(2).all(|w| w[0] == w[1]));
+    // 時間欄位不拿來比：資料夾的修改時間是從「父層目錄索引裡的副本」讀出來的，NTFS 在資料夾剛被
+    // 改過之後會稍晚才更新那份副本，所以建好夾具馬上連掃三次，第一次可能讀到略舊的值（差約 1 到 2
+    // 毫秒）。這個測試要確認的是數量、大小與排名不受 --threads 影響
+    let seen: Vec<_> = seen
+        .iter()
+        .map(|(a, b)| (without_times(a), without_times(b)))
+        .collect();
+    assert!(
+        seen.windows(2).all(|w| w[0] == w[1]),
+        "the index answers differ between --threads 1, 3 and 16: {seen:?}"
+    );
+}
+
+/// 去掉所有 `mtime` 與 `latest_mtime` 欄位（遞迴）。
+fn without_times(j: &J) -> J {
+    match j {
+        J::Obj(v) => J::Obj(
+            v.iter()
+                .filter(|(k, _)| k != "mtime" && k != "latest_mtime")
+                .map(|(k, x)| (k.clone(), without_times(x)))
+                .collect(),
+        ),
+        J::Arr(v) => J::Arr(v.iter().map(without_times).collect()),
+        other => other.clone(),
+    }
 }
 
 /// B5 樹：一次串流掃描建好索引（不寫快照），記憶體約 15 MB；之後的追問 ≤ 0.5 秒；索引 ≤ 5 MiB。

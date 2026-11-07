@@ -2,62 +2,65 @@
 
 **閱讀語言：** [English](README.md) · 正體中文 · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md)
 
+**掃描一次，之後想問幾題都可以，每題約一秒。**
+
 **給 AI agent 用的 Windows 磁碟分析工具。** 一次呼叫看懂一顆硬碟：哪裡最大、什麼副檔名最多、哪裡有空檔案、這幾天多了什麼。唯讀、單一執行檔、輸出固定格式的 JSON。
 
-| 100 萬個檔案的資料夾 | 整顆 `C:\`（系統管理員） | agent 連續追問 6 題 |
-|:---:|:---:|:---:|
-| 記憶體 **約少 11 倍**<br>14 MB 對 163 MB | 耗時 **約快 5.7 倍**<br>6.6 秒對 37.5 秒 | 耗時 **約快 4.8 倍**<br>46 秒對 220 秒 |
+| 整顆 `C:\`（系統管理員） | 記憶體，100 萬個檔案 | 單次掃描，100 萬個檔案 | agent 連續提問 |
+|:---:|:---:|:---:|:---:|
+| **快 5.7 倍**<br>6.6 秒對 37.5 秒 | **少 11 倍**<br>14 MB 對 163 MB | **最高快 117 倍**<br>比 Get-ChildItem；比最強的 .NET 寫法快 2.5 倍 | **快 17.4 倍**<br>連問 30 題，每題約 1 秒 |
 
-對照組都是寫得好的 PowerShell／.NET，取最強的一個；各 5 次取中位數。完整數字與**還沒贏的地方**見 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)，用 [`benchmarks/`](benchmarks/README.md) 的腳本可以在你的機器上重跑。
+> **第一題和任何掃描一樣慢。** voltdir 要先掃描資料夾並建立索引，這部分用心寫的 Python 腳本不會更慢（258 萬個檔案時是 0.9 倍）。優勢在第一題之後的每一題。還沒贏的地方列在下面。
+
+**整顆 `C:\`（系統管理員）：快 5.7 倍，6.6 秒對 37.5 秒。**
+
+![整顆 C:\ 約 310 萬個檔案](assets/zh-TW/chart-mft.svg)
+
+**記憶體，100 萬個檔案的資料夾：少用約 11 倍。**
+
+![峰值記憶體：100 萬個檔案的資料夾](assets/zh-TW/chart-memory.svg)
+
+**單次掃描 100 萬個檔案的資料夾：比常見的 Get-ChildItem 寫法最高快 117 倍，比最強的 .NET 寫法快 2.5 倍。**
+
+![單次掃描：100 萬個檔案的資料夾](assets/zh-TW/chart-scan.svg)
+
+**agent 替你連續提問：連問 30 題快 17.4 倍，每題約 1 秒。**
+
+![連續追問：掃一次，問很多次](assets/zh-TW/chart-followups.svg)
+
+數字量自真實資料夾，對照的是寫得用心的基準做法。每個數字（**包含還沒贏的地方**）都在 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)，所有圖表在[基準結果頁](BENCHMARKS.zh-TW.md)，[`benchmarks/`](benchmarks/README.md) 的腳本可以在你自己的機器上重現。
 
 - **唯讀：** 只讀名稱、大小、時間與屬性；不讀檔案內容、不刪除、不搬移、不連網、不自己提權。
 - **單一 `voltdir.exe`**（x64，約 0.75 MB）：靜態連結 C 執行階段，只匯入 Windows 內建的 DLL，不用另外安裝任何相依套件。
-- **給 agent 的 skill：** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md)（約 4,500 字元），附建置好的執行檔，第一步一律是 `overview`。
+- **給 agent 的 skill：** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md)（約 5,600 字元），附建置好的執行檔，第一步一律是 `overview`。
 - 狀態：**v1 候選**，只支援 Windows x64。
 
-## 使用情境：掃描一次，想問幾次都可以
+## 用大白話說就好
 
-沒有人只問 agent 一次「硬碟為什麼滿了」。接下來的追問一定還是同一個資料夾：哪些專案最大、哪種副檔名佔最多、有沒有久未修改的大檔可以處理、這禮拜多了什麼。沒有專用工具的 agent，每個問題都要重新走一遍資料夾，或是現寫一支用完即丟的腳本。而且那支腳本比看起來慢：一般的 Python `os.scandir` 迴圈走完同一個資料夾，要花 voltdir 的 2 到 5 倍時間（量測見下方）。
+你不需要寫任何搜尋語法。你跟 agent 說想做什麼，它會把話轉成搜尋，voltdir 從索引回答，完全不讀任何檔案的內容。
 
-voltdir 就是為這種問法設計的：
+| 你說 | voltdir 找出 |
+|---|---|
+| 「LINE、微信一直自動下載 PDF，幫我全部找出來分類整理」 | 你指定的每一顆磁碟（`C:`、`F:` 都行）上的所有 PDF：各來自哪裡（聊天軟體的資料夾、下載、桌面）、放了多久、多大、哪些像發票或合約、哪些是重複的，整理成清單供你決定 |
+| 「幫我整理手機匯進來的照片」 | 相機與手機拍的照片（`IMG_0001.JPG`、`PXL_…heic`），附上所在資料夾、大小與日期 |
+| 「幫我清一下螢幕截圖」 | 所有名稱像 `螢幕擷取畫面 2026-01-02.png` 的檔案，不管存在哪裡 |
+| 「下載資料夾是不是一堆重複的？」 | 像 `報告 (1).pdf`、`報告 - 複本.docx` 這樣的副本，以候選清單呈現 |
+| 「有什麼可以放心清掉？」 | 殘留的暫存檔（`.bak`、`.old`、`.tmp`、沒下載完的檔案）、舊安裝檔與空資料夾，附大小與年齡。這是給你決定的清單，voltdir 不會刪任何東西 |
+| 「報稅要用，幫我找發票」 | 名稱含「發票」「收據」的檔案，不會開啟任何檔案 |
+| 「我電腦裡有幾個專案？」 | 含有 `package.json`、`Cargo.toml`、`pyproject.toml` 或 `go.mod` 的資料夾 |
 
-1. **掃描一次。** 一次呼叫走完資料夾、回答常見問題，並存下一份精簡索引（30 萬個檔案的工作區約 2 MB）。
-2. **追問幾次都行。** 追問讀的是索引，不是磁碟，每次約 0.05 秒。
-3. **需要更多時，另存快照。** 快照（同一個工作區約 157 MB）還能回答 `find`；兩份快照用 `diff` 就能回答「這段時間多了什麼」。在很大的磁碟上，存快照比只存索引花更久。
+agent 實際使用的搜尋樣式都經過測試，列在 [`skills/voltdir/reference.md`](skills/voltdir/reference.md)。
 
-`overview` 的回答結尾有一個 `next` 欄位，列出最可能的下一步該執行的完整命令，agent 不必猜參數。
+### 聊天軟體自動下載的 PDF
 
-```mermaid
-flowchart LR
-    A["使用者：硬碟為什麼滿了？"] --> B["voltdir overview 路徑<br/>--save-index x.idx"]
-    B --> C{"還有追問嗎？"}
-    C -- "最大的資料夾、副檔名、空檔案" --> D["voltdir report --index x.idx<br/>約 0.03 秒，不重掃"]
-    D --> C
-    C -- "找特定檔案，或比較兩個時間點" --> E["--save-snapshot<br/>再用 find／diff"]
-    C -- "沒有" --> F["回答使用者"]
-    E --> F
-```
+LINE、微信（WeChat）、Telegram 這類聊天軟體，會把收到的每一份 PDF 存進自己的資料夾，多數人從來不會去看。在一台真實的電腦上，磁碟裡 728 個 PDF 中有 371 個躺在微信的資料夾裡。掃描一次之後依序問：有多少個、多大；各來自哪個軟體；哪些放了超過一年；哪些像發票或合約；哪些是重複下載。這樣的七個問題，掃描之後總共只花 1.25 秒，因為 PDF 的搜尋用的是副檔名，不是檔名樣式。接著由你的 agent 提出資料夾結構與搬移清單；voltdir 只讀名稱，在你點頭之前不會開啟、搬動或刪除任何檔案。
 
-範例：一個約 30 萬個檔案的開發工作區。
+## 為 agent 而做
 
-```powershell
-# 週一：掃描一次，回答常見問題，並留下快照與精簡索引（約 3 秒）
-voltdir overview D:\Workspace --save-snapshot C:\Temp\ws-mon.ndjson
-
-# 每個追問讀的是精簡索引，不是磁碟（各約 0.05 秒）
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --top-dirs 20 --dir-depth 3   # 空間花在哪？
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --by-ext 15                    # 哪些副檔名？
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --many-files 15                # 小檔案堆在哪？
-
-# 搜尋讀的是快照（約 1 秒）
-voltdir find --snapshot C:\Temp\ws-mon.ndjson --name package.json --sort size --limit 20
-
-# 週五：再掃一次，問這幾天多了什麼（約 3 秒）
-voltdir scan D:\Workspace --out C:\Temp\ws-fri.ndjson
-voltdir diff C:\Temp\ws-mon.ndjson C:\Temp\ws-fri.ndjson --top 30
-```
-
-**計數也是對的。** 在這個含有約 1,800 個 junction 的工作區，一般的 Python `os.scandir` 迴圈會多算 28% 的檔案（380,635 個，voltdir 是 296,839 個），因為它會走進每個 junction，把同一批檔案再算一次。voltdir 預設不跟隨 junction，硬連結的資料在實際大小上只算一次。你可以自己驗證：比較 `voltdir overview <資料夾>` 和 `voltdir overview <資料夾> --follow-links junction`，後者會得到較大的那個數字。
+- **會說它沒看到什麼。** 讀不到的資料夾列在 `coverage`，結束代碼是 2，所以不完整的答案不會被當成完整。
+- **不會被話術帶著走。** 檔名只是資料。控制字元與右到左的偽裝都會被跳脫，一個叫「忽略先前的指示……」的檔案仍然只是檔名。
+- **會說答案有多新。** stderr 有 `index: used (built 12 minutes ago)`。
+- **任何 agent 都找得到它。** 有 Claude skill 與外掛，也有給會讀 [`AGENTS.md`](AGENTS.md) 的 agent 用的檔案。就是一般命令列，不需要常駐任何服務。
 
 ---
 
@@ -89,7 +92,8 @@ voltdir overview D:\Projects
 voltdir overview D:\Projects --save-index C:\Temp\p.idx
 voltdir report --index C:\Temp\p.idx --top-dirs 20 --by-ext 15
 
-# 要用 find 或 diff 時才存完整快照
+# 要用 find 或 diff 時才存完整快照；它也會寫名稱索引，之後每次 find --snapshot 都不到一秒
+# （舊快照用 voltdir index 檔案 補建索引）
 voltdir overview D:\Projects --save-snapshot C:\Temp\p.ndjson
 voltdir find --snapshot C:\Temp\p.ndjson --ext .log --min-size 100M --sort size --limit 20
 voltdir diff C:\Temp\monday.ndjson C:\Temp\friday.ndjson --match-roots
@@ -101,44 +105,14 @@ voltdir diff C:\Temp\monday.ndjson C:\Temp\friday.ndjson --match-roots
 
 ## 基準結果
 
-以下數字都來自 `benchmarks\` 裡可重現的基準。每格各跑 5 次取中位數；量測時若有背景程序占用 CPU，會標註雜訊警告。
-
-### 記憶體：100 萬個檔案的資料夾
-
-![峰值記憶體：100 萬個檔案的資料夾](assets/zh-TW/chart-memory.svg)
-
-voltdir 邊走邊彙總：資料夾走完就併進上一層，不保留每個檔案的紀錄。對照組的 163 MB 大多是 `pwsh` 宿主本身，原生編譯的 .NET 程式會更低。
-
-### 整顆 C:\（系統管理員）
-
-![整顆 C:\ 約 310 萬個檔案](assets/zh-TW/chart-mft.svg)
-
-### agent 連續追問
-
-![agent 連續追問 6 題](assets/zh-TW/chart-agent.svg)
-
-同一個模型、同一組題目、同樣的權限，兩組各跑 5 次，全部答對。差距來自追問：存好索引後，每個追問約 3 到 8 秒；對照組每個追問要花 7 到 33 秒重算。agent 層級的對照需要 agent 執行環境，做法寫在 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)。
-
-### 單次掃描：100 萬個檔案的資料夾
-
-![單次掃描：100 萬個檔案的資料夾](assets/zh-TW/chart-scan.svg)
-
-### 對比一般 Python 腳本
-
-![對比一般 Python 腳本](assets/zh-TW/chart-python.svg)
-
-幾行 Python 就能走完一個資料夾，所以很容易以為它做得一樣快。其實不然。100 萬個檔案的資料夾，voltdir 只要 0.45 秒；一般的 `os.scandir` 迴圈要 2.40 秒（慢 5.3 倍），而且加上執行緒反而更慢，因為 Python 有全域直譯器鎖（GIL）。在開發工作區與整顆磁碟上，差距約 2 倍：資料夾又多又小時，時間主要花在開啟資料夾而不是讀檔案，這個成本每個工具都一樣。記憶體差不多，因為寫得仔細的 Python 腳本也是邊走邊彙總。
-
-| 資料夾 | 檔案數 | 資料夾數 | voltdir | 一般 Python 迴圈 | Python 要花 |
-|---|---|---|---|---|---|
-| 基準資料夾 | 1,000,000 | 5,059 | 0.45 秒 | 2.40 秒 | 5.3 倍時間 |
-| 開發工作區 | 296,839 | 57,680 | 3.10 秒 | 6.15 秒 | 2.0 倍時間 |
-| 整顆磁碟 | 1,913,115 | 142,848 | 9.82 秒 | 19.69 秒 | 2.0 倍時間 |
+所有圖表（記憶體、整顆磁碟、agent 連續追問、單次掃描、對比一般 Python 腳本）都在**[基準結果頁](BENCHMARKS.zh-TW.md)**，數字在 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)。
 
 ### 還沒贏的地方
 
 | 項目 | 現況 |
 |---|---|
+| 第一題 | 在一般權限的掃描上，不比寫得用心的 Python 腳本快；兩者都在等同樣的 NTFS 開啟目錄成本（258 萬個檔案時是 0.9 倍）。優勢在第一題之後。 |
+| 正規表示式搜尋 | 有多個選項的搜尋在 258 萬個名稱上約 2 秒；比對器還沒有最佳化。 |
 | 一般權限的單次掃描 | 100 萬個檔案比最強的 .NET 對照組快約 2.5 倍；整顆 `C:\` 反而較慢（0.78 倍）。瓶頸在 NTFS 開啟目錄的成本 |
 | token 用量 | 與對照組相近，voltdir 組多用 4% 到 10%。每次 agent 呼叫有約 7.3 萬 token 的固定開銷，任何工具都省不掉 |
 | 提權整碟的記憶體 | 186 MB，與 .NET 串流寫法（177 MB）打平，沒有領先 |
@@ -149,7 +123,7 @@ voltdir 邊走邊彙總：資料夾走完就併進上一層，不保留每個檔
 
 **做得好的地方**
 
-- **可以信任的計數。** 有處理 junction 與硬連結，總量和實際相符（見上）。
+- **可以信任的計數。** 有處理 junction 與硬連結，總量和實際相符（見[基準結果頁](BENCHMARKS.zh-TW.md)）。
 - **不會悄悄漏掉。** 有資料夾讀不到時，結束代碼是 2，`coverage` 會逐一列出。
 - **追問很便宜。** 有索引之後，每個問題約 0.05 秒。
 - **輸出穩定。** 同一份輸入、同一個引擎，輸出的 JSON 逐位元組相同。
@@ -168,7 +142,7 @@ voltdir 邊走邊彙總：資料夾走完就併進上一層，不保留每個檔
 | `find --snapshot ... --exclude` 會報錯 | 掃描選項只在掃描時有效，讀快照時無效 | 掃描時就排除（`scan --exclude`），或用 `--path` 篩選 |
 | 整顆磁碟的掃描結束代碼是 2 | 資源回收筒等系統資料夾讀不到；結果有效，`coverage` 會列出 | 在腳本裡把 2 當成「完成但有警告」，不要當成失敗 |
 | `find --limit` 依路徑順序保留前幾筆（預設 100） | 沒有另外指定時，結果依路徑排序 | 用 `--sort size`，並比對 `matched_total` 與清單筆數 |
-| 速度優勢跟樹的形狀有關 | 100 萬個檔案的資料夾比 Python 迴圈快約 5 倍；開發工作區或整顆磁碟約 2 倍（見上） | 在你自己的資料夾上跑一次基準 |
+| 速度優勢跟樹的形狀有關 | 100 萬個檔案的資料夾比 Python 迴圈快約 5 倍；開發工作區或整顆磁碟約 2 倍（見[基準結果頁](BENCHMARKS.zh-TW.md)） | 在你自己的資料夾上跑一次基準 |
 
 ---
 

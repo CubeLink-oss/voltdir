@@ -15,6 +15,17 @@ pub enum Command {
     Find(FindArgs),
     Diff(DiffArgs),
     Overview(OverviewArgs),
+    Index(IndexArgs),
+}
+
+/// `voltdir index <SNAPSHOT>`：替已存在的快照補寫名稱索引。
+#[derive(Debug, PartialEq, Eq)]
+pub struct IndexArgs {
+    pub snapshot: PathBuf,
+    pub quiet: bool,
+    /// 錯誤格式在 `main` 開頭就由 `fail::detect_json` 決定；這裡只記錄使用者的選擇
+    #[allow(dead_code)]
+    pub log_json: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -253,7 +264,7 @@ pub fn parse(args: Vec<OsString>) -> Result<Command, CliError> {
     let it = rest.clone().into_iter();
     if matches!(
         first.as_str(),
-        "info" | "scan" | "report" | "find" | "diff" | "overview"
+        "info" | "scan" | "report" | "find" | "diff" | "overview" | "index"
     ) && wants_help(&rest)
     {
         return Ok(Command::Help(
@@ -286,6 +297,7 @@ pub fn parse(args: Vec<OsString>) -> Result<Command, CliError> {
         "find" => parse_scan_or_report(it.collect(), Kind::Find),
         "overview" => parse_scan_or_report(it.collect(), Kind::Overview),
         "diff" => parse_diff(it.collect()),
+        "index" => parse_index(it.collect()),
         "dupes" => Err(CliError::Unsupported(format!(
             "command '{first}' is not available in this version"
         ))),
@@ -924,6 +936,49 @@ fn parse_scan_or_report(args: Vec<OsString>, kind: Kind) -> Result<Command, CliE
             }))
         }
     }
+}
+
+fn parse_index(args: Vec<OsString>) -> Result<Command, CliError> {
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let (mut quiet, mut log_json) = (false, false);
+    let mut i = 0;
+    while i < args.len() {
+        let raw = args[i].to_string_lossy().into_owned();
+        match raw.as_str() {
+            "--quiet" | "-q" => quiet = true,
+            "--json" => {}
+            "--log" => {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or_else(|| CliError::Usage("option --log requires a value".to_string()))?;
+                log_json = match v.to_string_lossy().as_ref() {
+                    "text" => false,
+                    "json" => true,
+                    other => {
+                        return Err(CliError::Usage(format!(
+                            "invalid --log '{other}' (expected text or json)"
+                        )));
+                    }
+                };
+            }
+            s if s.starts_with('-') && s != "-" => {
+                return Err(CliError::Usage(format!("unknown option '{raw}'")));
+            }
+            _ => paths.push(PathBuf::from(&args[i])),
+        }
+        i += 1;
+    }
+    if paths.len() != 1 {
+        return Err(CliError::Usage(
+            "index requires exactly one snapshot file: index <SNAPSHOT>".into(),
+        ));
+    }
+    Ok(Command::Index(IndexArgs {
+        snapshot: paths.remove(0),
+        quiet,
+        log_json,
+    }))
 }
 
 fn parse_diff(args: Vec<OsString>) -> Result<Command, CliError> {

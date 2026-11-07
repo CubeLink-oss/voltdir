@@ -2,62 +2,65 @@
 
 **Read in:** English · [正體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md)
 
+**Scan once. Then ask as many questions as you like, about a second each.**
+
 **Windows disk analysis built for AI agents.** One call tells you what is filling a drive: the largest folders, which file types take the most space, where the empty files are, and what changed since last week. Read-only, a single executable, and stable JSON output.
 
-| A folder with 1 million files | All of `C:\` (administrator) | An agent answering 6 follow-up questions |
-|:---:|:---:|:---:|
-| **About 11× less memory**<br>14 MB vs 163 MB | **About 5.7× faster**<br>6.6 s vs 37.5 s | **About 4.8× faster**<br>46 s vs 220 s |
+| All of `C:\` (administrator) | Memory, 1 million files | One scan, 1 million files | An agent asking a series of questions |
+|:---:|:---:|:---:|:---:|
+| **5.7× faster**<br>6.6 s vs 37.5 s | **11× less**<br>14 MB vs 163 MB | **up to 117× faster**<br>than Get-ChildItem; 2.5× faster than the best .NET code | **17.4× faster**<br>30 questions in a row, about 1 s each |
 
-Each comparison is against the best of several well-written PowerShell/.NET baselines, median of 5 runs. The full numbers, **including where voltdir does not win yet**, are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md). The scripts in [`benchmarks/`](benchmarks/README.md) reproduce them on your own machine.
+> **The first question costs as much as any scan.** voltdir scans the folder and builds the index, and a careful Python script is no slower at that (0.9× on 2.6 million files). The win is every question after it. Where voltdir does not win yet is listed further down.
+
+**All of `C:\` (administrator): 5.7× faster, 6.6 s against 37.5 s.**
+
+![All of C:\, about 3.1 million files](assets/en/chart-mft.svg)
+
+**Memory on a folder with 1 million files: about 11× less.**
+
+![Peak memory, folder with 1 million files](assets/en/chart-memory.svg)
+
+**One scan of a folder with 1 million files: up to 117× faster than a typical Get-ChildItem script, and 2.5× faster than the strongest .NET code.**
+
+![Single scan, folder with 1 million files](assets/en/chart-scan.svg)
+
+**An agent working through a series of questions for you: 17.4× faster over 30 questions, about 1 s each.**
+
+![Follow-up questions: scan once, ask many times](assets/en/chart-followups.svg)
+
+Measured on real folders against well-written baselines. Every number, **including where voltdir does not win yet**, is in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md), all the charts are on the [benchmark page](BENCHMARKS.md), and the scripts in [`benchmarks/`](benchmarks/README.md) reproduce them on your own machine.
 
 - **Read-only.** voltdir reads names, sizes, timestamps and attributes. It never reads file contents, never deletes or moves anything, never touches the network, and never elevates itself.
 - **One `voltdir.exe`** (x64, about 0.75 MB). The C runtime is linked statically and only built-in Windows DLLs are imported. No third-party dependencies to install.
-- **An agent skill.** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md) (about 4,500 characters) ships with the executable and starts every task with `overview`.
+- **An agent skill.** [`skills/voltdir/SKILL.md`](skills/voltdir/SKILL.md) (about 5,600 characters) ships with the executable and starts every task with `overview`.
 - Status: **v1 candidate**, Windows x64 only.
 
-## The use case: scan once, ask as many questions as you like
+## Say it in plain words
 
-Nobody asks an agent "why is my disk full?" just once. The follow-ups are always about the same folder: which projects are biggest, which file types dominate, whether anything large and stale can go, what changed since last week. An agent without a purpose-built tool walks the folder again for every question, or writes a throwaway script that does. And that script is slower than it looks: a plain Python `os.scandir` loop needs 2 to 5 times as long as voltdir to walk the same folder (measurements below).
+You do not write search patterns. You tell your agent what you want; it turns that into a search, and voltdir answers from its index without reading a single file's contents.
 
-voltdir is built for exactly this pattern:
+| You say | voltdir finds |
+|---|---|
+| “LINE and WeChat keep downloading PDFs. Find them all and sort them out” | Every PDF on every drive you name (`C:` and `F:` alike): where each came from (chat-app folders, Downloads, desktop), how old, how big, which look like invoices or contracts and which are duplicates, as a list for you to act on |
+| “Sort out the photos from my phone” | Camera and phone photos (`IMG_0001.JPG`, `PXL_…heic`), with the folder, size and date of each |
+| “Clean up my screenshots” | Everything named like `Screenshot 2026-01-02.png`, wherever it was saved |
+| “Is my Downloads folder full of duplicates?” | Copies such as `report (1).pdf` and `report - copy.docx`, as a candidate list |
+| “What can I safely clear out?” | Leftovers (`.bak`, `.old`, `.tmp`, unfinished downloads), old installers and empty folders, with size and age. A list for you to decide on; voltdir never deletes anything |
+| “Find my receipts for tax time” | File names containing `invoice` or `receipt`; nothing is opened |
+| “How many projects do I have on this machine?” | Folders that contain `package.json`, `Cargo.toml`, `pyproject.toml` or `go.mod` |
 
-1. **Scan once.** One call walks the folder, answers the common questions, and saves a small index (about 2 MB for a workspace of 300,000 files).
-2. **Ask again and again.** Follow-up questions read the index instead of the disk, in about 0.05 s each.
-3. **Keep a snapshot when you need more.** A snapshot (about 157 MB for the same workspace) also answers `find`, and two snapshots answer "what changed?" with `diff`. Saving a snapshot takes longer than saving only an index on very large drives.
+The exact patterns your agent uses are tested and listed in [`skills/voltdir/reference.md`](skills/voltdir/reference.md).
 
-The `overview` answer ends with a `next` field: the exact commands to run for the likely follow-ups, so an agent never has to guess flags.
+### The PDFs your chat apps downloaded
 
-```mermaid
-flowchart LR
-    A["User: why is my disk full?"] --> B["voltdir overview PATH<br/>--save-index x.idx"]
-    B --> C{"More questions?"}
-    C -- "Largest folders, file types, empty files" --> D["voltdir report --index x.idx<br/>~0.03 s, no rescan"]
-    D --> C
-    C -- "Find specific files or compare two points in time" --> E["--save-snapshot<br/>then find / diff"]
-    C -- "No" --> F["Answer the user"]
-    E --> F
-```
+LINE, WeChat, Telegram and similar apps save every PDF they receive into their own folders, and most people never look there. On one real machine, 371 of the 728 PDFs on the drive were in WeChat's folder. Scan once, then ask in turn: how many are there and how big; which came from which app; which are older than a year; which look like invoices or contracts; which are duplicate downloads. Seven questions like that took 1.25 s in total after the scan, because PDF searches use the file extension rather than a name pattern. Your agent then proposes folders and a move list; voltdir only reads names, so nothing is opened, moved or deleted until you say so.
 
-A worked example, on a developer workspace of about 300,000 files:
+## Built for agents
 
-```powershell
-# Monday: one scan answers the common questions and leaves a snapshot and a small index behind (about 3 s)
-voltdir overview D:\Workspace --save-snapshot C:\Temp\ws-mon.ndjson
-
-# Every follow-up reads the small index, not the disk (about 0.05 s each)
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --top-dirs 20 --dir-depth 3   # where did the space go?
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --by-ext 15                    # which file types?
-voltdir report --snapshot C:\Temp\ws-mon.ndjson --many-files 15                # where are the piles of small files?
-
-# Searching reads the snapshot (about 1 s)
-voltdir find --snapshot C:\Temp\ws-mon.ndjson --name package.json --sort size --limit 20
-
-# Friday: scan again and ask what changed (about 3 s)
-voltdir scan D:\Workspace --out C:\Temp\ws-fri.ndjson
-voltdir diff C:\Temp\ws-mon.ndjson C:\Temp\ws-fri.ndjson --top 30
-```
-
-**The counts are right, too.** On that workspace, which contains about 1,800 junctions, a plain Python `os.scandir` loop counted 28% more files than voltdir (380,635 against 296,839): it walks into every junction and counts the same files again. voltdir does not follow junctions by default, and counts hard-linked data once toward physical size. To see it yourself, compare `voltdir overview <folder>` with `voltdir overview <folder> --follow-links junction`; the second gives the larger count.
+- **It says what it did not see.** Unreadable folders are listed under `coverage` and the exit code is 2, so a partial answer is never passed off as complete.
+- **It cannot be talked into anything.** File names are data. Control characters and right-to-left tricks are escaped, so a file called “ignore previous instructions…” stays a name.
+- **It says how fresh the answer is.** `index: used (built 12 minutes ago)` on stderr.
+- **Any agent can find it.** A Claude skill and plugin, plus an [`AGENTS.md`](AGENTS.md) for agents that read one. A plain command line; there is no server to run.
 
 ---
 
@@ -89,7 +92,8 @@ voltdir overview D:\Projects
 voltdir overview D:\Projects --save-index C:\Temp\p.idx
 voltdir report --index C:\Temp\p.idx --top-dirs 20 --by-ext 15
 
-# Save a full snapshot only when you need find or diff
+# Save a full snapshot only when you need find or diff; it also writes a name index,
+# so every later find --snapshot answers in a fraction of a second (older snapshots: voltdir index FILE)
 voltdir overview D:\Projects --save-snapshot C:\Temp\p.ndjson
 voltdir find --snapshot C:\Temp\p.ndjson --ext .log --min-size 100M --sort size --limit 20
 voltdir diff C:\Temp\monday.ndjson C:\Temp\friday.ndjson --match-roots
@@ -101,44 +105,14 @@ For a whole drive, run PowerShell **as administrator** so voltdir can use the `m
 
 ## Benchmarks
 
-Every number below comes from the reproducible benchmarks in `benchmarks\`. Each cell is the median of 5 runs, and runs measured while background processes were busy are flagged as noisy.
-
-### Memory: a folder with 1 million files
-
-![Peak memory, folder with 1 million files](assets/en/chart-memory.svg)
-
-voltdir aggregates as it streams: once a folder is finished it is folded into its parent, so no per-file records are kept. Most of the baseline's 163 MB is the `pwsh` host itself; a natively compiled .NET program would use less.
-
-### All of C:\ (administrator)
-
-![All of C:\, about 3.1 million files](assets/en/chart-mft.svg)
-
-### An agent answering follow-up questions
-
-![An agent answering 6 follow-up questions](assets/en/chart-agent.svg)
-
-Same model, same questions, same permissions, 5 runs per group, every answer correct. The gap comes from the follow-ups: with a saved index each one takes about 3–8 s, while the baseline agent spends 7–33 s recomputing. Agent-level runs need an agent harness; the method is described in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
-
-### Single scan: a folder with 1 million files
-
-![Single scan, folder with 1 million files](assets/en/chart-scan.svg)
-
-### Against a plain Python script
-
-![Against a plain Python script](assets/en/chart-python.svg)
-
-A few lines of Python can walk a folder, so it is easy to assume they do the job just as fast. They do not. voltdir finishes a folder with 1 million files in 0.45 s; a plain `os.scandir` loop needs 2.40 s (5.3× as long), and adding threads makes it slower, not faster, because of Python's global interpreter lock. On a developer workspace and on a whole drive the gap is about 2×: with many small folders, opening the folders dominates the time rather than reading files, and that cost is the same for every tool. Memory is about the same, because a careful Python script also aggregates while it walks.
-
-| Folder | Files | Folders | voltdir | Plain Python loop | Python takes |
-|---|---|---|---|---|---|
-| Benchmark folder | 1,000,000 | 5,059 | 0.45 s | 2.40 s | 5.3× as long |
-| Developer workspace | 296,839 | 57,680 | 3.10 s | 6.15 s | 2.0× as long |
-| Whole drive | 1,913,115 | 142,848 | 9.82 s | 19.69 s | 2.0× as long |
+All the charts (memory, a whole drive, agent follow-ups, single scans, a plain Python script) are on the **[benchmark page](BENCHMARKS.md)**, with the numbers in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
 ### Where voltdir does not win yet
 
 | Area | Where it stands |
 |---|---|
+| The first question | No faster than a careful Python script on a standard-user scan; both wait on the same NTFS directory opens (0.9× on 2.6 million files). The win comes from the questions after it. |
+| Regex searches | Searches with several alternatives take about 2 s on 2.6 million names; the matcher is not optimised yet. |
 | Single scan without elevation | About 2.5× faster than the best .NET baseline on 1 million files, but slower on all of `C:\` (0.78×). The bottleneck is the cost of opening directories on NTFS. |
 | Token usage | About the same as the baseline; the voltdir group used 4–10% more. Each agent call carries roughly 73,000 tokens of fixed overhead that no tool can reduce. |
 | Memory for an elevated full-drive scan | 186 MB, on par with a streaming .NET script (177 MB), not ahead of it. |
@@ -149,7 +123,7 @@ The reasons are explained in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
 **What works well**
 
-- **Counts you can trust.** Junctions and hard links are handled, so totals match reality (see above).
+- **Counts you can trust.** Junctions and hard links are handled, so totals match reality (see the [benchmark page](BENCHMARKS.md)).
 - **No silent gaps.** If some folders can't be read, the exit code is 2 and `coverage` lists exactly which.
 - **Cheap follow-ups.** About 0.05 s per question once an index exists.
 - **Stable output.** The same input with the same engine gives byte-for-byte identical JSON.
@@ -168,7 +142,7 @@ The reasons are explained in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 | `find --snapshot ... --exclude` stops with an error | Scan options apply when scanning, not when reading a snapshot | Exclude at scan time (`scan --exclude`), or filter with `--path` |
 | Whole-drive scans exit with 2 | System folders such as the recycle bin can't be read; the result is valid and `coverage` lists them | In scripts, treat 2 as "complete with warnings", not as a failure |
 | `find --limit` keeps the first matches in path order (default 100) | Results are sorted by path unless you ask otherwise | Use `--sort size`, and compare `matched_total` with the length of the list |
-| The speed advantage depends on the tree | About 5× over a Python loop on a folder with 1 million files, about 2× on a developer workspace or a whole drive (see above) | Run the benchmarks on your own folders |
+| The speed advantage depends on the tree | About 5× over a Python loop on a folder with 1 million files, about 2× on a developer workspace or a whole drive (see the [benchmark page](BENCHMARKS.md)) | Run the benchmarks on your own folders |
 
 ---
 

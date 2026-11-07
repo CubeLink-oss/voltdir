@@ -404,13 +404,26 @@ impl Regex {
 
     /// 文字中任何位置是否符合。
     pub fn is_match(&self, text: &[u16]) -> bool {
+        self.is_match_with(text, &mut self.scratch())
+    }
+
+    /// 比對大量名稱時用：暫存空間可以重複使用，不必每個名稱配置三個向量。
+    pub fn scratch(&self) -> Scratch {
         let n = self.prog.len();
-        let mut cur = Threads::new(n);
-        let mut next = Threads::new(n);
-        let mut stack: Vec<usize> = Vec::new();
+        Scratch {
+            cur: Threads::new(n),
+            next: Threads::new(n),
+            stack: Vec::new(),
+        }
+    }
+
+    pub fn is_match_with(&self, text: &[u16], scratch: &mut Scratch) -> bool {
+        let Scratch { cur, next, stack } = scratch;
+        cur.clear();
+        next.clear();
         for pos in 0..=text.len() {
             // 每個位置都可以開始一次新的比對（未錨定的搜尋）
-            self.add(&mut cur, 0, pos, text.len(), &mut stack);
+            self.add(cur, 0, pos, text.len(), stack);
             if cur
                 .list
                 .iter()
@@ -433,10 +446,10 @@ impl Regex {
                     _ => false,
                 };
                 if ok {
-                    self.add(&mut next, pc + 1, pos + 1, text.len(), &mut stack);
+                    self.add(next, pc + 1, pos + 1, text.len(), stack);
                 }
             }
-            std::mem::swap(&mut cur, &mut next);
+            std::mem::swap(cur, next);
         }
         false
     }
@@ -470,6 +483,13 @@ impl Regex {
             }
         }
     }
+}
+
+/// `is_match_with` 的暫存空間；同一個執行緒可以一直重複使用。
+pub struct Scratch {
+    cur: Threads,
+    next: Threads,
+    stack: Vec<usize>,
 }
 
 struct Threads {

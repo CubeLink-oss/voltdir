@@ -283,7 +283,7 @@ fn push_files(out: &mut Vec<u8>, list: &[FileRec]) {
 }
 
 /// FNV-1a 64 位元（只用來偵測快照結尾是否改變，不是安全用途）。
-fn fnv1a(bytes: &[u8]) -> u64 {
+pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for &b in bytes {
         h ^= u64::from(b);
@@ -292,7 +292,7 @@ fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
-fn mtime_ns(meta: &std::fs::Metadata) -> Result<i64, String> {
+pub(crate) fn mtime_ns(meta: &std::fs::Metadata) -> Result<i64, String> {
     let t = meta
         .modified()
         .map_err(|e| format!("cannot read the modified time: {e}"))?;
@@ -303,7 +303,7 @@ fn mtime_ns(meta: &std::fs::Metadata) -> Result<i64, String> {
 }
 
 /// 快照結尾的 `summary` 行（最後一個非空行）。
-fn summary_line(path: &Path, len: u64) -> Result<Vec<u8>, String> {
+pub(crate) fn summary_line(path: &Path, len: u64) -> Result<Vec<u8>, String> {
     let mut f = std::fs::File::open(path).map_err(|e| format!("cannot open the snapshot: {e}"))?;
     let start = len.saturating_sub(TAIL_BYTES);
     f.seek(SeekFrom::Start(start))

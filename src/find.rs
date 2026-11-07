@@ -68,53 +68,118 @@ pub struct Cand<'a> {
     pub dir_empty: bool,
 }
 
+/// 不需要名稱與路徑就能判斷的欄位（類型、副檔名、大小、日期、空）。
+/// 名稱索引先用它對欄位陣列做緊湊迴圈，通過的才去比對名稱。
+pub struct Meta<'a> {
+    pub is_dir: bool,
+    pub ext: &'a [u16],
+    pub logical: u64,
+    pub physical: u64,
+    pub mtime: u64,
+    pub dir_empty: bool,
+}
+
 impl Filter {
-    pub fn matches(&self, c: &Cand<'_>) -> bool {
-        match (self.kind, c.is_dir) {
+    /// 類型、副檔名、大小、日期、空：不需要名稱與路徑。
+    pub fn matches_meta(&self, m: &Meta<'_>) -> bool {
+        if let Some(exts) = &self.exts
+            && (m.is_dir || !exts.contains(m.ext))
+        {
+            return false;
+        }
+        self.matches_meta_except_ext(m)
+    }
+
+    /// 同 `matches_meta`，但不看副檔名（名稱索引已用副檔名編號先判斷過）。
+    pub fn matches_meta_except_ext(&self, m: &Meta<'_>) -> bool {
+        match (self.kind, m.is_dir) {
             (Kind::File, true) | (Kind::Dir, false) => return false,
             _ => {}
         }
-        if let Some(exts) = &self.exts
-            && (c.is_dir || !exts.contains(c.ext))
+        if self.min_size.is_some_and(|v| m.physical < v)
+            || self.max_size.is_some_and(|v| m.physical > v)
         {
             return false;
         }
-        if self.min_size.is_some_and(|m| c.physical < m)
-            || self.max_size.is_some_and(|m| c.physical > m)
-        {
-            return false;
-        }
-        if self.older_than.is_some_and(|t| c.mtime >= t)
-            || self.newer_than.is_some_and(|t| c.mtime < t)
+        if self.older_than.is_some_and(|t| m.mtime >= t)
+            || self.newer_than.is_some_and(|t| m.mtime < t)
         {
             return false;
         }
         if self.empty {
-            let is_empty = if c.is_dir {
-                c.dir_empty
+            let is_empty = if m.is_dir {
+                m.dir_empty
             } else {
-                c.logical == 0
+                m.logical == 0
             };
             if !is_empty {
                 return false;
             }
         }
+        true
+    }
+
+    /// 比對大量名稱時用的暫存空間（沒有 `--name-regex` 時是 `None`）。
+    pub fn name_scratch(&self) -> Option<crate::regex::Scratch> {
+        self.name_regex.as_ref().map(Regex::scratch)
+    }
+
+    /// 同 `matches_name`，但重複使用正規表示式的暫存空間。
+    pub fn matches_name_with(
+        &self,
+        name: &[u16],
+        scratch: &mut Option<crate::regex::Scratch>,
+    ) -> bool {
         if let Some(g) = &self.name_glob
-            && !glob::matches(g, c.name)
+            && !glob::matches(g, name)
+        {
+            return false;
+        }
+        match (&self.name_regex, scratch.as_mut()) {
+            (Some(r), Some(s)) => r.is_match_with(name, s),
+            (Some(r), None) => r.is_match(name),
+            (None, _) => true,
+        }
+    }
+
+    /// `--name` 與 `--name-regex`。
+    pub fn matches_name(&self, name: &[u16]) -> bool {
+        if let Some(g) = &self.name_glob
+            && !glob::matches(g, name)
         {
             return false;
         }
         if let Some(r) = &self.name_regex
-            && !r.is_match(c.name)
-        {
-            return false;
-        }
-        if let Some(g) = &self.path_glob
-            && !glob::matches(g, c.path)
+            && !r.is_match(name)
         {
             return false;
         }
         true
+    }
+
+    /// `--path`。
+    pub fn matches_path(&self, path: &[u16]) -> bool {
+        match &self.path_glob {
+            Some(g) => glob::matches(g, path),
+            None => true,
+        }
+    }
+
+    /// 有 `--path` 條件時才一定要先重建路徑。
+    pub fn needs_path(&self) -> bool {
+        self.path_glob.is_some()
+    }
+
+    pub fn matches(&self, c: &Cand<'_>) -> bool {
+        self.matches_meta(&Meta {
+            is_dir: c.is_dir,
+            ext: c.ext,
+            logical: c.logical,
+            physical: c.physical,
+            mtime: c.mtime,
+            dir_empty: c.dir_empty,
+        }) && self.matches_name(c.name)
+            && self.matches_path(c.path)
     }
 }
 
@@ -176,6 +241,23 @@ impl Matcher {
         if !self.filter.matches(c) {
             return;
         }
+        self.offer_matched(c, raw);
+    }
+
+    pub fn filter(&self) -> &Filter {
+        &self.filter
+    }
+
+    pub fn sort(&self) -> Sort {
+        self.sort
+    }
+
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    /// 呼叫者已經確認 `c` 通過篩選（名稱索引先做便宜的條件，最後才組出路徑）。
+    pub fn offer_matched(&mut self, c: &Cand<'_>, raw: impl FnOnce() -> Vec<u8>) {
         self.matched += 1;
         if self.limit == 0 {
             return;
@@ -392,6 +474,38 @@ mod tests {
         r.name_regex = Some(Regex::new(&w(r"^img_\d+\.(png|jpg)$")).unwrap());
         assert!(r.matches(&cand(&file(r"C:\p\IMG_001.PNG", 1, 0))));
         assert!(!r.matches(&cand(&file(r"C:\p\img_a.png", 1, 0))));
+    }
+
+    #[test]
+    fn split_filter_equals_whole() {
+        let mut f = filter();
+        f.kind = Kind::Any;
+        f.name_glob = Some(w("*.LOG"));
+        f.min_size = Some(100);
+        f.path_glob = Some(w(r"C:\a\*"));
+        f.exts = Some([w(".log")].into_iter().collect());
+        let cands = [
+            file(r"C:\a\x.log", 100, 0),
+            file(r"C:\a\x.log", 99, 0),
+            file(r"C:\b\x.log", 500, 0),
+            file(r"C:\a\x.txt", 500, 0),
+            file(r"C:\a\y.LOG", 500, 0),
+        ];
+        for c in &cands {
+            let cc = cand(c);
+            let parts = f.matches_meta(&Meta {
+                is_dir: cc.is_dir,
+                ext: cc.ext,
+                logical: cc.logical,
+                physical: cc.physical,
+                mtime: cc.mtime,
+                dir_empty: cc.dir_empty,
+            }) && f.matches_name(cc.name)
+                && f.matches_path(cc.path);
+            assert_eq!(f.matches(&cc), parts, "{:?}", c.path);
+        }
+        assert!(f.needs_path());
+        assert!(!filter().needs_path());
     }
 
     #[test]
