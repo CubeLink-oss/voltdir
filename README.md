@@ -216,7 +216,7 @@ Get-Content skills\voltdir\bin\voltdir.exe.sha256
 
 The two hashes should match (the first is printed in upper case). If they do not, check that you are on the same commit and that `rustc +1.94.0 -V` reports 1.94.0; a different version of the MSVC linker can also change the bytes. If you would rather not run a binary you did not build, use your own `target\release\voltdir.exe` instead; the skill also accepts `voltdir` on your `PATH`.
 
-Some security scanners flag any skill that bundles an executable. That warning is expected here, and the steps above are how you settle it.
+Some security scanners flag any skill that bundles an executable. That warning is expected here, and the steps above are how you settle it. What the binary can and cannot do (no networking code, no credential APIs, only five imported system libraries) is written down in [`SECURITY.md`](SECURITY.md).
 
 ## Repository layout
 

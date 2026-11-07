@@ -216,7 +216,7 @@ Get-Content skills\voltdir\bin\voltdir.exe.sha256
 
 Hai mã băm phải trùng nhau (mã đầu được in chữ hoa). Nếu không trùng, hãy kiểm tra bạn đang ở cùng commit và `rustc +1.94.0 -V` báo 1.94.0; phiên bản trình liên kết MSVC khác cũng có thể làm thay đổi các byte. Nếu không muốn chạy tệp không do chính mình build, hãy dùng `target\release\voltdir.exe` của bạn; skill cũng chấp nhận `voltdir` có trong `PATH`.
 
-Một số trình quét bảo mật sẽ cảnh báo mọi skill có đi kèm tệp thực thi. Cảnh báo đó là dự kiến, và các bước trên chính là cách để bạn tự xác nhận.
+Một số trình quét bảo mật sẽ cảnh báo mọi skill có đi kèm tệp thực thi. Cảnh báo đó là dự kiến, và các bước trên chính là cách để bạn tự xác nhận. Những việc tệp thực thi làm được và không làm được (không có mã mạng, không có API thông tin xác thực, chỉ nhập năm thư viện hệ thống) được ghi trong [`SECURITY.md`](SECURITY.md).
 
 ## Cấu trúc kho mã
 

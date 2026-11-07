@@ -216,7 +216,7 @@ Get-Content skills\voltdir\bin\voltdir.exe.sha256
 
 两个哈希值应当一致（前者以大写显示）。如果不一致，请确认 commit 相同、`rustc +1.94.0 -V` 显示 1.94.0；MSVC 链接器版本不同也可能导致字节不同。如果不想运行非自己构建的文件，改用你自己的 `target\release\voltdir.exe` 即可；skill 也接受已在 `PATH` 中的 `voltdir`。
 
-有些安全扫描器只要发现 skill 附带可执行文件就会报警。这在意料之中，上面的步骤就是让你自行确认的方法。
+有些安全扫描器只要发现 skill 附带可执行文件就会报警。这在意料之中，上面的步骤就是让你自行确认的方法。 可执行文件能做和不能做的事（没有网络代码、没有凭据 API、只导入五个系统库）写在 [`SECURITY.md`](SECURITY.md)。
 
 ## 仓库结构
 

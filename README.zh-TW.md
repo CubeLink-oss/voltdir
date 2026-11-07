@@ -216,7 +216,7 @@ Get-Content skills\voltdir\bin\voltdir.exe.sha256
 
 兩個雜湊值應該相同（前者以大寫顯示）。如果不同，請確認 commit 一致、`rustc +1.94.0 -V` 顯示 1.94.0；MSVC 連結器的版本不同也可能讓位元組不一樣。如果你不想執行不是自己建置的檔案，改用你自己的 `target\release\voltdir.exe` 即可；skill 也接受已在 `PATH` 上的 `voltdir`。
 
-有些安全掃描器只要看到 skill 附帶執行檔就會發出警告。這在預期之內，上面的步驟就是讓你自行確認的方法。
+有些安全掃描器只要看到 skill 附帶執行檔就會發出警告。這在預期之內，上面的步驟就是讓你自行確認的方法。 執行檔能做與不能做的事（沒有網路程式碼、沒有憑證 API、只匯入五個系統函式庫）寫在 [`SECURITY.md`](SECURITY.md)。
 
 ## 倉庫內容
 
